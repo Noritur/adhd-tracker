@@ -1,26 +1,126 @@
 @import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+@custom-variant dark (&:is(.dark *));
 
 @theme inline {
+  /* Surfaces */
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+
+  /* Brand */
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+
+  /* Lines & rings */
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  /* App-specific tokens (brief.md) */
+  --color-text-secondary: var(--text-secondary);
+  --color-accent-warm: var(--accent-warm);
+
+  /* Category colors */
+  --color-cat-coded: var(--cat-coded);
+  --color-cat-work: var(--cat-work);
+  --color-cat-sport: var(--cat-sport);
+  --color-cat-outdoors: var(--cat-outdoors);
+  --color-cat-social: var(--cat-social);
+  --color-cat-rest: var(--cat-rest);
+  --color-cat-chores: var(--cat-chores);
+  --color-cat-other: var(--cat-other);
+
+  /* Charts (used by Tremor / Recharts later) */
+  --color-chart-1: var(--cat-coded);
+  --color-chart-2: var(--cat-work);
+  --color-chart-3: var(--cat-outdoors);
+  --color-chart-4: var(--cat-social);
+  --color-chart-5: var(--cat-rest);
+
+  /* Fonts — literal names per shadcn skill (no var() inside @theme inline) */
+  --font-sans: "Geist", "Geist Fallback", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Geist Mono", "Geist Mono Fallback", ui-monospace, monospace;
+  --font-heading: "Geist", "Geist Fallback", ui-sans-serif, system-ui, sans-serif;
+
+  /* Radius scale (brief.md: card 20, button 16, pill 9999, modal-top 28) */
+  --radius-sm: 0.5rem;   /* 8 */
+  --radius-md: 0.75rem;  /* 12, timeline-block */
+  --radius-lg: 1rem;     /* 16, button */
+  --radius-xl: 1.25rem;  /* 20, card */
+  --radius-2xl: 1.75rem; /* 28, modal-top */
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+/* Brief palette — dark first (this is a dark-only app v1) */
+:root,
+.dark {
+  --background: #0B1014;
+  --foreground: #ECF2F5;
+
+  --card: #131A20;
+  --card-foreground: #ECF2F5;
+
+  --popover: #1A222B;
+  --popover-foreground: #ECF2F5;
+
+  --primary: #5EEAD4;
+  --primary-foreground: #0B1014;
+
+  --secondary: #131A20;
+  --secondary-foreground: #ECF2F5;
+
+  --muted: #131A20;
+  --muted-foreground: #7A8892;
+
+  --accent: #131A20;
+  --accent-foreground: #ECF2F5;
+
+  --destructive: #F87171;
+  --destructive-foreground: #ECF2F5;
+
+  --border: #232D38;
+  --input: #232D38;
+  --ring: #5EEAD4;
+
+  /* App-specific */
+  --text-secondary: #B0BDC4;
+  --accent-warm: #FBBF24;
+  --radius: 1rem;
+
+  /* Category palette (brief.md — 5 hues + 3 neutrals) */
+  --cat-coded: #5EEAD4;
+  --cat-work: #2DD4BF;
+  --cat-sport: #6EE7B7;
+  --cat-outdoors: #FBBF24;
+  --cat-social: #FDA4AF;
+  --cat-rest: #94A3B8;
+  --cat-chores: #64748B;
+  --cat-other: #475569;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
   }
-}
-
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  html {
+    @apply font-sans antialiased;
+  }
+  body {
+    @apply bg-background text-foreground;
+    /* Tabular numerals для clock/duration (brief.md) */
+    font-variant-numeric: tabular-nums;
+  }
 }
