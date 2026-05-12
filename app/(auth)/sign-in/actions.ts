@@ -39,11 +39,16 @@ export async function sendMagicLink(
   });
 
   if (error) {
-    const friendlyError =
-      error.message.toLowerCase().includes("rate limit")
-        ? "перевантажений email. зачекай ~30 хв або введи код з попереднього листа"
-        : error.message;
-    return { step: "idle", email, error: friendlyError };
+    const isRateLimit = error.message.toLowerCase().includes("rate limit");
+    return {
+      // Rate-limited: still advance to code-entry so user can use code from
+      // an earlier email (codes are valid ~1h regardless of resend cooldown).
+      step: isRateLimit ? "awaiting_code" : "idle",
+      email,
+      error: isRateLimit
+        ? "перевантажений email. введи 6-значний код з попереднього листа, або зачекай ~30 хв"
+        : error.message,
+    };
   }
 
   return { step: "awaiting_code", email };
