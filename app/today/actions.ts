@@ -45,11 +45,14 @@ export async function saveBlockAction(
       });
     }
   } catch (e) {
-    const msg = e instanceof Error ? e.message : "save failed";
+    const raw = e instanceof Error ? e.message : "save failed";
     console.error(
-      JSON.stringify({ level: "error", msg: "today.save_failed", error: msg }),
+      JSON.stringify({ level: "error", msg: "today.save_failed", error: raw }),
     );
-    return { error: msg };
+    const friendly = raw.includes("time_blocks_no_overlap")
+      ? "цей час уже зайнятий іншим блоком"
+      : raw;
+    return { error: friendly };
   }
 
   revalidatePath("/today");
@@ -77,15 +80,18 @@ export async function updateBlockTimesAction(
   try {
     await updateBlock(supabase, id, { start_at, end_at });
   } catch (e) {
-    const msg = e instanceof Error ? e.message : "update failed";
+    const raw = e instanceof Error ? e.message : "update failed";
     console.error(
       JSON.stringify({
         level: "error",
         msg: "today.update_times_failed",
-        error: msg,
+        error: raw,
       }),
     );
-    return { error: msg };
+    const friendly = raw.includes("time_blocks_no_overlap")
+      ? "цей час уже зайнятий"
+      : raw;
+    return { error: friendly };
   }
 
   revalidatePath("/today");

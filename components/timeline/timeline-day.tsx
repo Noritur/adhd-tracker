@@ -28,6 +28,26 @@ const RESIZE_HIT_PX = 12;
 
 type DragMode = "move" | "resize-top" | "resize-bottom";
 
+/**
+ * Find the vertical "lane" a block can occupy without overlapping others:
+ * everything between the latest end_at above and the earliest start_at below.
+ */
+function getLaneBounds(
+  origStart: number,
+  origEnd: number,
+  otherBlocks: Block[],
+): { maxAbove: number; minBelow: number } {
+  let maxAbove = 0;
+  let minBelow = DAY_MINUTES;
+  for (const b of otherBlocks) {
+    const bStart = isoToLocalDayMinutes(b.start_at);
+    const bEnd = isoToLocalDayMinutes(b.end_at);
+    if (bEnd <= origStart) maxAbove = Math.max(maxAbove, bEnd);
+    if (bStart >= origEnd) minBelow = Math.min(minBelow, bStart);
+  }
+  return { maxAbove, minBelow };
+}
+
 export function TimelineDay({
   initialBlocks,
   dateISO,
@@ -70,16 +90,35 @@ export function TimelineDay({
     window.addEventListener("pointercancel", cancel);
   };
 
+  /** Clamp a proposed [start, end) to avoid overlap with existing blocks. */
+  const fitInGap = (startMin: number, desiredEnd: number) => {
+    // If start falls inside any block, refuse (caller should ignore tap)
+    for (const b of blocksRef.current) {
+      const bStart = isoToLocalDayMinutes(b.start_at);
+      const bEnd = isoToLocalDayMinutes(b.end_at);
+      if (bStart <= startMin && startMin < bEnd) return null;
+    }
+    let nearestBelow = DAY_MINUTES;
+    for (const b of blocksRef.current) {
+      const bStart = isoToLocalDayMinutes(b.start_at);
+      if (bStart > startMin && bStart < nearestBelow) nearestBelow = bStart;
+    }
+    const endMin = Math.min(desiredEnd, nearestBelow);
+    if (endMin - startMin < MIN_BLOCK_MIN) return null;
+    return { startMin, endMin };
+  };
+
   const openCreateAtY = (clientY: number) => {
     if (!containerRef.current) return;
     const rect = containerRef.current.getBoundingClientRect();
     const y = clientY - rect.top;
     const rawMin = Math.round(y / PX_PER_MIN);
     const startMin = clampMin(snap(rawMin));
-    const endMin = clampMin(startMin + 60);
+    const fit = fitInGap(startMin, startMin + 60);
+    if (!fit) return;
     setEditing({
-      startMin,
-      endMin,
+      startMin: fit.startMin,
+      endMin: fit.endMin,
       category: DEFAULT_CATEGORY,
       label: "",
     });
@@ -88,9 +127,23 @@ export function TimelineDay({
   const openCreateNow = () => {
     const now = new Date();
     const min = clampMin(snap(now.getHours() * 60 + now.getMinutes()));
+    const desiredStart = clampMin(min - 30);
+    const desiredEnd = clampMin(min + 30);
+    const fit = fitInGap(desiredStart, desiredEnd);
+    if (!fit) {
+      // Fallback: try to start at `min` itself if "now ± 30" collides
+      const fallback = fitInGap(min, min + 60);
+      if (!fallback) return;
+      setEditing({
+        ...fallback,
+        category: DEFAULT_CATEGORY,
+        label: "",
+      });
+      return;
+    }
     setEditing({
-      startMin: clampMin(min - 30),
-      endMin: clampMin(min + 30),
+      startMin: fit.startMin,
+      endMin: fit.endMin,
       category: DEFAULT_CATEGORY,
       label: "",
     });
@@ -152,6 +205,7 @@ export function TimelineDay({
             <BlockChip
               key={block.id}
               block={block}
+              otherBlocks={blocks.filter((b) => b.id !== block.id)}
               dateISO={dateISO}
               onTap={() =>
                 setEditing({
@@ -197,12 +251,14 @@ export function TimelineDay({
 
 function BlockChip({
   block,
+  otherBlocks,
   dateISO,
   onTap,
   onLocalChange,
   onCommit,
 }: {
   block: Block;
+  otherBlocks: Block[];
   dateISO: string;
   onTap: () => void;
   onLocalChange: (id: number, patch: Partial<Block>) => void;
@@ -254,10 +310,17 @@ function BlockChip({
     const deltaMin = snap(Math.round(dy / PX_PER_MIN));
     let newStart = state.origStart;
     let newEnd = state.origEnd;
+    const { maxAbove, minBelow } = getLaneBounds(
+      state.origStart,
+      state.origEnd,
+      otherBlocks,
+    );
 
     if (state.mode === "move") {
       const duration = state.origEnd - state.origStart;
       newStart = clampMin(state.origStart + deltaMin);
+      // Clamp into lane between adjacent blocks (no overlap)
+      newStart = Math.max(maxAbove, Math.min(minBelow - duration, newStart));
       newEnd = newStart + duration;
       if (newEnd > DAY_MINUTES) {
         newEnd = DAY_MINUTES;
@@ -265,11 +328,13 @@ function BlockChip({
       }
     } else if (state.mode === "resize-top") {
       newStart = clampMin(state.origStart + deltaMin);
+      newStart = Math.max(maxAbove, newStart);
       if (newStart > state.origEnd - MIN_BLOCK_MIN) {
         newStart = state.origEnd - MIN_BLOCK_MIN;
       }
     } else {
       newEnd = clampMin(state.origEnd + deltaMin);
+      newEnd = Math.min(minBelow, newEnd);
       if (newEnd < state.origStart + MIN_BLOCK_MIN) {
         newEnd = state.origStart + MIN_BLOCK_MIN;
       }
