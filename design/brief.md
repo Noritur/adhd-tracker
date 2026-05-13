@@ -41,20 +41,31 @@ Mobile-first dark-only web app. User логує блоки часу drag/click �
 | `warning` | `#FBBF24` | Gentle nudges |
 | `danger` | `#F87171` | Destructive (red-400) |
 
-### Category colors (5 hues + 3 neutrals — НЕ радуга)
+### Category colors v2 (2026-05-13 — distinct hue per category)
+
+Original v1 ("teal-family productive + slate-family neutrals") looked
+cohesive on paper but unreadable at a glance — `coded`/`work_other`/`sport`
+all read as teal, `rest`/`chores`/`other` all read as grey. Live test
+flagged it. v2 trades "monochrome restraint" for category legibility.
 
 | Category | Hex | Family | Icon | UI label (UA) |
 |---|---|---|---|---|
-| `coded` | `#5EEAD4` | teal-300 (primary) | `</>` | код |
-| `work_other` | `#2DD4BF` | teal-400 (deeper) | briefcase | робота |
-| `sport` | `#6EE7B7` | emerald-300 (teal cousin) | dumbbell | спорт |
-| `outdoors` | `#FBBF24` | amber-400 (warm contrast = "вийди з хати") | sun | надвір |
-| `social` | `#FDA4AF` | rose-300 (warm contrast = людина, дзвінки, body-double) | speech-bubble | люди |
-| `rest` | `#94A3B8` | slate-400 (cool neutral) | moon | відпочинок |
-| `chores` | `#64748B` | slate-500 (mid neutral) | broom | побут |
-| `other` | `#475569` | slate-600 (deep neutral) | dots | інше |
+| `coded` | `#5EEAD4` | teal-300 (productive primary) | `</>` | код |
+| `work_other` | `#60A5FA` | blue-400 (productive cool) | briefcase | робота |
+| `sport` | `#84CC16` | lime-500 (fitness/energy) | dumbbell | спорт |
+| `outdoors` | `#FBBF24` | amber-400 (sun/warm contrast) | sun | надвір |
+| `social` | `#FDA4AF` | rose-300 (people/warm contrast) | speech-bubble | люди |
+| `rest` | `#38BDF8` | sky-400 (calm/recovery) | moon | відпочинок |
+| `chores` | `#A78BFA` | violet-400 (household/lavender) | broom | побут |
+| `other` | `#94A3B8` | slate-400 (true neutral) | dots | інше |
 
-**Important:** body-double / дзвінки / meetings — це все `social`. НЕ окрема purple/violet категорія. Палітра 8 категорій локнута.
+**Structure of v2:**
+- Productive cluster (3 cool hues): teal → blue → lime
+- Warm accents (2): amber + rose
+- Calm/recovery: sky (rest), violet (chores)
+- True neutral: slate (other only)
+
+**Important:** body-double / дзвінки / meetings — це все `social`. Палітра 8 категорій локнута.
 
 **Логіка палітри:**
 - **Productive bucket** → teal/mint family (3 hues: coded / work_other / sport). Виглядають як один родовий клас, але різнотон у heatmap.

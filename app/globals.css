@@ -100,15 +100,17 @@
   --accent-warm: #FBBF24;
   --radius: 1rem;
 
-  /* Category palette (brief.md — 5 hues + 3 neutrals) */
-  --cat-coded: #5EEAD4;
-  --cat-work: #2DD4BF;
-  --cat-sport: #6EE7B7;
-  --cat-outdoors: #FBBF24;
-  --cat-social: #FDA4AF;
-  --cat-rest: #94A3B8;
-  --cat-chores: #64748B;
-  --cat-other: #475569;
+  /* Category palette v2 (2026-05-13) — distinct hues per category.
+     Old "teal-family productive + slate-family neutrals" was too
+     hard to distinguish at-a-glance. */
+  --cat-coded: #5EEAD4;   /* teal-300 — productive primary */
+  --cat-work: #60A5FA;    /* blue-400 — productive cool */
+  --cat-sport: #84CC16;   /* lime-500 — fitness/energy */
+  --cat-outdoors: #FBBF24;/* amber-400 — sun/outside */
+  --cat-social: #FDA4AF;  /* rose-300 — people/warmth */
+  --cat-rest: #38BDF8;    /* sky-400 — calm/recovery */
+  --cat-chores: #A78BFA;  /* violet-400 — household/lavender */
+  --cat-other: #94A3B8;   /* slate-400 — true neutral */
 }
 
 @layer base {
