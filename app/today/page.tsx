@@ -1,33 +1,84 @@
+import { redirect } from "next/navigation";
+import { LogOut, Flame } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
+import { getBlocksForDate } from "@/lib/db/blocks";
+import { TimelineDay } from "@/components/timeline/timeline-day";
+
+const WEEKDAYS = [
+  "неділя",
+  "понеділок",
+  "вівторок",
+  "середа",
+  "четвер",
+  "п'ятниця",
+  "субота",
+];
+const WEEKDAYS_SHORT = ["нд", "пн", "вт", "ср", "чт", "пт", "сб"];
+const MONTHS = [
+  "січня",
+  "лютого",
+  "березня",
+  "квітня",
+  "травня",
+  "червня",
+  "липня",
+  "серпня",
+  "вересня",
+  "жовтня",
+  "листопада",
+  "грудня",
+];
 
 export default async function TodayPage() {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
+  if (!user) redirect("/sign-in");
+
+  const today = new Date();
+  const blocks = await getBlocksForDate(supabase, user.id, today);
+
+  const dateLabel = `${WEEKDAYS_SHORT[today.getDay()]}, ${today.getDate()} ${MONTHS[today.getMonth()]}`;
+  void WEEKDAYS; // reserved for full-name use later
 
   return (
-    <main className="min-h-screen flex flex-col items-center justify-center px-6 py-10 text-center">
-      <div className="w-full max-w-sm flex flex-col gap-4">
-        <span className="text-xs uppercase tracking-wider text-muted-foreground">
-          Day 1 stub
-        </span>
-        <h1 className="text-3xl font-extrabold leading-tight">сьогодні</h1>
-        <p className="text-[var(--text-secondary)]">
-          залогінений як <span className="font-semibold">{user?.email}</span>.
-        </p>
-        <p className="text-xs text-muted-foreground">
-          таймлайн зявиться в Day 2 (drag/click 24h component).
-        </p>
-        <form action="/auth/sign-out" method="post" className="mt-4">
-          <button
-            type="submit"
-            className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2"
-          >
-            вийти
-          </button>
-        </form>
+    <main className="min-h-screen flex flex-col bg-background">
+      {/* Sticky header */}
+      <header className="sticky top-0 z-40 bg-background/80 backdrop-blur border-b border-border/40">
+        <div className="flex items-center justify-between px-4 py-3 gap-3">
+          <div className="flex items-center gap-2 bg-card border border-border rounded-full px-3 py-1.5 text-sm font-semibold">
+            <span className="w-1.5 h-1.5 rounded-full bg-primary" />
+            {dateLabel}
+          </div>
+          <form action="/auth/sign-out" method="post">
+            <button
+              type="submit"
+              className="flex items-center gap-1.5 bg-card border border-border rounded-full px-3 py-1.5 text-sm font-semibold text-muted-foreground hover:text-foreground"
+              aria-label="вийти"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+              <span>вийти</span>
+            </button>
+          </form>
+        </div>
+        <div className="px-4 pb-4">
+          <h1 className="text-3xl font-extrabold leading-tight">сьогодні</h1>
+          <p className="text-sm text-[var(--text-secondary)] mt-1">
+            м'який план без геройства. просто наступний блок.
+          </p>
+        </div>
+      </header>
+
+      <div className="px-4 py-5 pb-32">
+        <TimelineDay
+          initialBlocks={blocks}
+          dateISO={today.toISOString()}
+        />
       </div>
+
+      {/* Hidden: flame icon imported but visually used later for streak chip */}
+      <Flame className="hidden" aria-hidden />
     </main>
   );
 }
