@@ -104,7 +104,7 @@
      Old "teal-family productive + slate-family neutrals" was too
      hard to distinguish at-a-glance. */
   --cat-coded: #5EEAD4;   /* teal-300 — productive primary */
-  --cat-work: #60A5FA;    /* blue-400 — productive cool */
+  --cat-work: #6366F1;    /* indigo-500 — productive serious (deeper than blue, distinct from sky/violet) */
   --cat-sport: #84CC16;   /* lime-500 — fitness/energy */
   --cat-outdoors: #FBBF24;/* amber-400 — sun/outside */
   --cat-social: #FDA4AF;  /* rose-300 — people/warmth */

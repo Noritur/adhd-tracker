@@ -51,7 +51,7 @@ flagged it. v2 trades "monochrome restraint" for category legibility.
 | Category | Hex | Family | Icon | UI label (UA) |
 |---|---|---|---|---|
 | `coded` | `#5EEAD4` | teal-300 (productive primary) | `</>` | код |
-| `work_other` | `#60A5FA` | blue-400 (productive cool) | briefcase | робота |
+| `work_other` | `#6366F1` | indigo-500 (productive serious — distinct from sky and violet) | briefcase | робота |
 | `sport` | `#84CC16` | lime-500 (fitness/energy) | dumbbell | спорт |
 | `outdoors` | `#FBBF24` | amber-400 (sun/warm contrast) | sun | надвір |
 | `social` | `#FDA4AF` | rose-300 (people/warm contrast) | speech-bubble | люди |
