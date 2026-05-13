@@ -1,8 +1,9 @@
 import { redirect } from "next/navigation";
-import { LogOut, Flame } from "lucide-react";
+import { LogOut } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { getBlocksForDate } from "@/lib/db/blocks";
 import { TimelineDay } from "@/components/timeline/timeline-day";
+import { SummaryTiles } from "@/components/summary-tiles";
 
 const WEEKDAYS = [
   "неділя",
@@ -70,15 +71,13 @@ export default async function TodayPage() {
         </div>
       </header>
 
-      <div className="px-4 py-5 pb-32">
+      <div className="px-4 py-5 pb-32 flex flex-col gap-5">
+        <SummaryTiles blocks={blocks} />
         <TimelineDay
           initialBlocks={blocks}
           dateISO={today.toISOString()}
         />
       </div>
-
-      {/* Hidden: flame icon imported but visually used later for streak chip */}
-      <Flame className="hidden" aria-hidden />
     </main>
   );
 }
