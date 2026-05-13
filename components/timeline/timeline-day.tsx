@@ -120,7 +120,7 @@ export function TimelineDay({
         <div
           ref={containerRef}
           onPointerDown={onGridPointerDown}
-          className="relative bg-card rounded-3xl border border-border overflow-hidden touch-none select-none"
+          className="relative bg-card rounded-3xl border border-border overflow-hidden touch-pan-y select-none"
           style={{ height: `${DAY_MINUTES * PX_PER_MIN}px` }}
         >
           {/* Hour ticks */}
