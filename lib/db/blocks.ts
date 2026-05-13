@@ -55,6 +55,28 @@ export async function getBlocksForDate(
   return (data ?? []) as Block[];
 }
 
+/**
+ * Fetch every block whose start_at falls inside [startLocal, endLocal).
+ * Used by /week — passes Monday→Sunday local-midnight bounds.
+ */
+export async function getBlocksForRange(
+  client: DbClient,
+  userId: string,
+  startLocal: Date,
+  endLocal: Date,
+): Promise<Block[]> {
+  const { data, error } = await client
+    .from("time_blocks")
+    .select("id, user_id, start_at, end_at, category, label")
+    .eq("user_id", userId)
+    .gte("start_at", startLocal.toISOString())
+    .lt("start_at", endLocal.toISOString())
+    .order("start_at", { ascending: true });
+
+  if (error) throw error;
+  return (data ?? []) as Block[];
+}
+
 export async function createBlock(
   client: DbClient,
   input: BlockInsert,

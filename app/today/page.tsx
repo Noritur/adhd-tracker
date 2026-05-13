@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getBlocksForDate } from "@/lib/db/blocks";
 import { TimelineDay } from "@/components/timeline/timeline-day";
 import { SummaryTiles } from "@/components/summary-tiles";
+import { BottomNav } from "@/components/bottom-nav";
 
 const WEEKDAYS = [
   "неділя",
@@ -78,6 +79,8 @@ export default async function TodayPage() {
           dateISO={today.toISOString()}
         />
       </div>
+
+      <BottomNav />
     </main>
   );
 }
