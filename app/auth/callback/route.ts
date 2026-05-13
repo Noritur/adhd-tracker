@@ -26,11 +26,24 @@ export async function GET(request: Request) {
 
   const supabase = await createClient();
 
+  const successDestination = async () => {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    const passwordSet = user?.user_metadata?.password_set;
+    // First-time-after-magic-link users → force /set-password.
+    // Users who explicitly skipped have password_set='skipped' (truthy) → no redirect.
+    if (passwordSet) {
+      return `${origin}${next}`;
+    }
+    return `${origin}/set-password`;
+  };
+
   if (code) {
     const { error } = await supabase.auth.exchangeCodeForSession(code);
     if (!error) {
       console.log(JSON.stringify({ level: "info", msg: "auth.callback.pkce_ok" }));
-      return NextResponse.redirect(`${origin}${next}`);
+      return NextResponse.redirect(await successDestination());
     }
     console.error(
       JSON.stringify({
@@ -46,7 +59,7 @@ export async function GET(request: Request) {
     });
     if (!error) {
       console.log(JSON.stringify({ level: "info", msg: "auth.callback.otp_ok" }));
-      return NextResponse.redirect(`${origin}${next}`);
+      return NextResponse.redirect(await successDestination());
     }
     console.error(
       JSON.stringify({

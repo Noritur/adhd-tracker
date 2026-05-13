@@ -39,6 +39,7 @@ export async function updateSession(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const isAuthRoute =
     pathname.startsWith("/sign-in") || pathname.startsWith("/auth");
+  const isSetPassword = pathname.startsWith("/set-password");
 
   if (!user && !isAuthRoute) {
     const url = request.nextUrl.clone();
@@ -50,6 +51,17 @@ export async function updateSession(request: NextRequest) {
     const url = request.nextUrl.clone();
     url.pathname = "/today";
     return NextResponse.redirect(url);
+  }
+
+  // Soft-enforce password setup: nudge authenticated users without a password
+  // (and who didn't explicitly skip) toward /set-password.
+  if (user && !isAuthRoute && !isSetPassword) {
+    const passwordSet = user.user_metadata?.password_set;
+    if (!passwordSet) {
+      const url = request.nextUrl.clone();
+      url.pathname = "/set-password";
+      return NextResponse.redirect(url);
+    }
   }
 
   return response;

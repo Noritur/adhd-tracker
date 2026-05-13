@@ -5,9 +5,11 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 
 export type SignInStep = "idle" | "awaiting_code";
+export type SignInMode = "magic" | "password";
 
 export type SignInState = {
   step: SignInStep;
+  mode?: SignInMode;
   email?: string;
   error?: string;
 };
@@ -21,7 +23,7 @@ export async function sendMagicLink(
     .toLowerCase();
 
   if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-    return { step: "idle", email, error: "вкажи робочий email" };
+    return { step: "idle", mode: "magic", email, error: "вкажи робочий email" };
   }
 
   const supabase = await createClient();
@@ -41,9 +43,8 @@ export async function sendMagicLink(
   if (error) {
     const isRateLimit = error.message.toLowerCase().includes("rate limit");
     return {
-      // Rate-limited: still advance to code-entry so user can use code from
-      // an earlier email (codes are valid ~1h regardless of resend cooldown).
       step: isRateLimit ? "awaiting_code" : "idle",
+      mode: "magic",
       email,
       error: isRateLimit
         ? "перевантажений email. введи 6-значний код з попереднього листа, або зачекай ~30 хв"
@@ -51,7 +52,7 @@ export async function sendMagicLink(
     };
   }
 
-  return { step: "awaiting_code", email };
+  return { step: "awaiting_code", mode: "magic", email };
 }
 
 export async function verifyEmailCode(
@@ -64,10 +65,15 @@ export async function verifyEmailCode(
   const token = String(formData.get("code") ?? "").replace(/\s+/g, "");
 
   if (!email) {
-    return { step: "idle", error: "email загубився, почни знову" };
+    return { step: "idle", mode: "magic", error: "email загубився, почни знову" };
   }
   if (!/^\d{6}$/.test(token)) {
-    return { step: "awaiting_code", email, error: "код має бути 6 цифр" };
+    return {
+      step: "awaiting_code",
+      mode: "magic",
+      email,
+      error: "код має бути 6 цифр",
+    };
   }
 
   const supabase = await createClient();
@@ -78,12 +84,42 @@ export async function verifyEmailCode(
   });
 
   if (error) {
-    return { step: "awaiting_code", email, error: error.message };
+    return { step: "awaiting_code", mode: "magic", email, error: error.message };
   }
 
   redirect("/today");
 }
 
-export async function resetSignIn(): Promise<SignInState> {
-  return { step: "idle" };
+export async function signInWithPassword(
+  _prev: SignInState | null,
+  formData: FormData,
+): Promise<SignInState> {
+  const email = String(formData.get("email") ?? "")
+    .trim()
+    .toLowerCase();
+  const password = String(formData.get("password") ?? "");
+
+  if (!email || !password) {
+    return {
+      step: "idle",
+      mode: "password",
+      email,
+      error: "введи email і пароль",
+    };
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase.auth.signInWithPassword({ email, password });
+
+  if (error) {
+    // Generic message to avoid leaking which side was wrong.
+    return {
+      step: "idle",
+      mode: "password",
+      email,
+      error: "невірний email або пароль",
+    };
+  }
+
+  redirect("/today");
 }
