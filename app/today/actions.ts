@@ -56,6 +56,42 @@ export async function saveBlockAction(
   return {};
 }
 
+export type UpdateBlockTimesResult = { error?: string };
+
+export async function updateBlockTimesAction(
+  id: number,
+  start_at: string,
+  end_at: string,
+): Promise<UpdateBlockTimesResult> {
+  if (!id) return { error: "missing id" };
+  if (new Date(end_at) <= new Date(start_at)) {
+    return { error: "кінець має бути після початку" };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "not authenticated" };
+
+  try {
+    await updateBlock(supabase, id, { start_at, end_at });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "update failed";
+    console.error(
+      JSON.stringify({
+        level: "error",
+        msg: "today.update_times_failed",
+        error: msg,
+      }),
+    );
+    return { error: msg };
+  }
+
+  revalidatePath("/today");
+  return {};
+}
+
 export async function deleteBlockAction(formData: FormData): Promise<void> {
   const id = Number(formData.get("id"));
   if (!id) return;

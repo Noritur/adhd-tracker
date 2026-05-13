@@ -1,27 +1,32 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Plus } from "lucide-react";
 import {
   BlockEditSheet,
   type EditingBlock,
 } from "@/components/block-edit-sheet";
+import { updateBlockTimesAction } from "@/app/today/actions";
 import {
   CATEGORIES_BY_VALUE,
   DEFAULT_CATEGORY,
-  type Category,
 } from "@/lib/categories";
 import {
   DAY_MINUTES,
   MIN_BLOCK_MIN,
   PX_PER_MIN,
-  SNAP_MIN,
   clampMin,
   formatTime,
   isoToLocalDayMinutes,
+  localDayMinutesToISO,
   snap,
 } from "@/lib/time/slots";
 import type { Block } from "@/lib/db/blocks";
+
+const TAP_THRESHOLD_PX = 6;
+const RESIZE_HIT_PX = 12;
+
+type DragMode = "move" | "resize-top" | "resize-bottom";
 
 export function TimelineDay({
   initialBlocks,
@@ -30,8 +35,40 @@ export function TimelineDay({
   initialBlocks: Block[];
   dateISO: string;
 }) {
+  // Local mirror of blocks so drag previews are immediate.
+  const [blocks, setBlocks] = useState<Block[]>(initialBlocks);
   const [editing, setEditing] = useState<EditingBlock | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+
+  // Sync when server revalidates with fresh data.
+  useEffect(() => {
+    setBlocks(initialBlocks);
+  }, [initialBlocks]);
+
+  const onGridPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if ((e.target as HTMLElement).closest("[data-block]")) return;
+    // record start to distinguish tap from accidental drag
+    const startY = e.clientY;
+    const onMove = (ev: PointerEvent) => {
+      if (Math.abs(ev.clientY - startY) > TAP_THRESHOLD_PX) {
+        cancel();
+      }
+    };
+    const onUp = (ev: PointerEvent) => {
+      cancel();
+      if (Math.abs(ev.clientY - startY) <= TAP_THRESHOLD_PX) {
+        openCreateAtY(ev.clientY);
+      }
+    };
+    const cancel = () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", cancel);
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", cancel);
+  };
 
   const openCreateAtY = (clientY: number) => {
     if (!containerRef.current) return;
@@ -48,31 +85,42 @@ export function TimelineDay({
     });
   };
 
-  const onGridClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    if ((e.target as HTMLElement).closest("[data-block]")) return;
-    openCreateAtY(e.clientY);
-  };
-
   const openCreateNow = () => {
     const now = new Date();
     const min = clampMin(snap(now.getHours() * 60 + now.getMinutes()));
-    const startMin = clampMin(min - 30);
-    const endMin = clampMin(min + 30);
     setEditing({
-      startMin,
-      endMin,
+      startMin: clampMin(min - 30),
+      endMin: clampMin(min + 30),
       category: DEFAULT_CATEGORY,
       label: "",
     });
   };
+
+  const updateBlockLocal = (id: number, patch: Partial<Block>) => {
+    setBlocks((prev) =>
+      prev.map((b) => (b.id === id ? { ...b, ...patch } : b)),
+    );
+  };
+
+  const commitBlockTimes = async (id: number) => {
+    const current = blocksRef.current.find((b) => b.id === id);
+    if (!current) return;
+    await updateBlockTimesAction(id, current.start_at, current.end_at);
+  };
+
+  // Keep a ref to latest blocks for use inside async drop handlers
+  const blocksRef = useRef(blocks);
+  useEffect(() => {
+    blocksRef.current = blocks;
+  }, [blocks]);
 
   return (
     <>
       <div className="relative">
         <div
           ref={containerRef}
-          onClick={onGridClick}
-          className="relative bg-card rounded-3xl border border-border overflow-hidden cursor-pointer"
+          onPointerDown={onGridPointerDown}
+          className="relative bg-card rounded-3xl border border-border overflow-hidden touch-none select-none"
           style={{ height: `${DAY_MINUTES * PX_PER_MIN}px` }}
         >
           {/* Hour ticks */}
@@ -98,15 +146,14 @@ export function TimelineDay({
             />
           ))}
 
-          {/* Now line */}
           <NowLine />
 
-          {/* Blocks */}
-          {initialBlocks.map((block) => (
+          {blocks.map((block) => (
             <BlockChip
               key={block.id}
               block={block}
-              onClick={() =>
+              dateISO={dateISO}
+              onTap={() =>
                 setEditing({
                   id: block.id,
                   startMin: isoToLocalDayMinutes(block.start_at),
@@ -115,11 +162,12 @@ export function TimelineDay({
                   label: block.label ?? "",
                 })
               }
+              onLocalChange={updateBlockLocal}
+              onCommit={commitBlockTimes}
             />
           ))}
 
-          {/* Empty state hint (only when no blocks) */}
-          {initialBlocks.length === 0 && (
+          {blocks.length === 0 && (
             <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
               <span className="text-sm text-muted-foreground">
                 тапни будь-де щоб додати блок
@@ -128,7 +176,6 @@ export function TimelineDay({
           )}
         </div>
 
-        {/* FAB — opens "now" block */}
         <button
           type="button"
           onClick={openCreateNow}
@@ -150,31 +197,145 @@ export function TimelineDay({
 
 function BlockChip({
   block,
-  onClick,
+  dateISO,
+  onTap,
+  onLocalChange,
+  onCommit,
 }: {
   block: Block;
-  onClick: () => void;
+  dateISO: string;
+  onTap: () => void;
+  onLocalChange: (id: number, patch: Partial<Block>) => void;
+  onCommit: (id: number) => Promise<void>;
 }) {
   const startMin = isoToLocalDayMinutes(block.start_at);
   const endMin = isoToLocalDayMinutes(block.end_at);
   const height = Math.max(MIN_BLOCK_MIN, endMin - startMin) * PX_PER_MIN;
   const meta = CATEGORIES_BY_VALUE[block.category];
+
+  const dragRef = useRef<{
+    mode: DragMode;
+    startY: number;
+    origStart: number;
+    origEnd: number;
+    dragging: boolean;
+    pointerId: number;
+  } | null>(null);
+  const [activeMode, setActiveMode] = useState<DragMode | null>(null);
+
+  const onPointerDown = (e: React.PointerEvent<HTMLButtonElement>) => {
+    e.stopPropagation();
+    const target = e.currentTarget;
+    const rect = target.getBoundingClientRect();
+    const offsetY = e.clientY - rect.top;
+    let mode: DragMode = "move";
+    if (offsetY < RESIZE_HIT_PX) mode = "resize-top";
+    else if (offsetY > rect.height - RESIZE_HIT_PX) mode = "resize-bottom";
+
+    dragRef.current = {
+      mode,
+      startY: e.clientY,
+      origStart: isoToLocalDayMinutes(block.start_at),
+      origEnd: isoToLocalDayMinutes(block.end_at),
+      dragging: false,
+      pointerId: e.pointerId,
+    };
+    target.setPointerCapture(e.pointerId);
+    setActiveMode(mode);
+  };
+
+  const onPointerMove = (e: React.PointerEvent<HTMLButtonElement>) => {
+    const state = dragRef.current;
+    if (!state || state.pointerId !== e.pointerId) return;
+    const dy = e.clientY - state.startY;
+    if (!state.dragging && Math.abs(dy) < TAP_THRESHOLD_PX) return;
+    state.dragging = true;
+
+    const deltaMin = snap(Math.round(dy / PX_PER_MIN));
+    let newStart = state.origStart;
+    let newEnd = state.origEnd;
+
+    if (state.mode === "move") {
+      const duration = state.origEnd - state.origStart;
+      newStart = clampMin(state.origStart + deltaMin);
+      newEnd = newStart + duration;
+      if (newEnd > DAY_MINUTES) {
+        newEnd = DAY_MINUTES;
+        newStart = newEnd - duration;
+      }
+    } else if (state.mode === "resize-top") {
+      newStart = clampMin(state.origStart + deltaMin);
+      if (newStart > state.origEnd - MIN_BLOCK_MIN) {
+        newStart = state.origEnd - MIN_BLOCK_MIN;
+      }
+    } else {
+      newEnd = clampMin(state.origEnd + deltaMin);
+      if (newEnd < state.origStart + MIN_BLOCK_MIN) {
+        newEnd = state.origStart + MIN_BLOCK_MIN;
+      }
+    }
+
+    onLocalChange(block.id, {
+      start_at: localDayMinutesToISO(new Date(dateISO), newStart),
+      end_at: localDayMinutesToISO(new Date(dateISO), newEnd),
+    });
+  };
+
+  const onPointerUp = async (e: React.PointerEvent<HTMLButtonElement>) => {
+    const state = dragRef.current;
+    if (!state || state.pointerId !== e.pointerId) return;
+    e.currentTarget.releasePointerCapture(e.pointerId);
+    const wasDragging = state.dragging;
+    dragRef.current = null;
+    setActiveMode(null);
+    if (wasDragging) {
+      await onCommit(block.id);
+    } else {
+      onTap();
+    }
+  };
+
+  const cursor =
+    activeMode === "resize-top" || activeMode === "resize-bottom"
+      ? "ns-resize"
+      : activeMode === "move"
+        ? "grabbing"
+        : "grab";
+
   return (
     <button
       type="button"
       data-block
-      onClick={(e) => {
-        e.stopPropagation();
-        onClick();
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      onPointerCancel={() => {
+        dragRef.current = null;
+        setActiveMode(null);
       }}
-      className="absolute left-16 right-2 rounded-xl px-3 py-2 flex flex-col gap-0.5 text-left active:scale-[0.99] transition-transform overflow-hidden"
+      className="absolute left-16 right-2 rounded-xl px-3 py-2 flex flex-col gap-0.5 text-left overflow-hidden touch-none select-none shadow-sm"
       style={{
         top: `${startMin * PX_PER_MIN}px`,
         height: `${height}px`,
         backgroundColor: meta.cssVar,
+        cursor,
       }}
     >
-      <div className="text-[11px] font-bold tabular-nums text-[#0B1014]/70">
+      {/* Resize hint bars at top/bottom edges */}
+      <span
+        className="absolute left-0 right-0 top-0 h-3 flex items-center justify-center"
+        aria-hidden
+      >
+        <span className="w-8 h-0.5 rounded-full bg-[#0B1014]/30" />
+      </span>
+      <span
+        className="absolute left-0 right-0 bottom-0 h-3 flex items-center justify-center"
+        aria-hidden
+      >
+        <span className="w-8 h-0.5 rounded-full bg-[#0B1014]/30" />
+      </span>
+
+      <div className="text-[11px] font-bold tabular-nums text-[#0B1014]/70 mt-2">
         {formatTime(startMin)} — {formatTime(endMin)}
       </div>
       <div className="text-sm font-extrabold text-[#0B1014] leading-tight">
@@ -190,8 +351,18 @@ function BlockChip({
 }
 
 function NowLine() {
-  const now = new Date();
-  const min = now.getHours() * 60 + now.getMinutes();
+  const [min, setMin] = useState<number | null>(null);
+  useEffect(() => {
+    const tick = () => {
+      const now = new Date();
+      setMin(now.getHours() * 60 + now.getMinutes());
+    };
+    tick();
+    const id = setInterval(tick, 60_000);
+    return () => clearInterval(id);
+  }, []);
+
+  if (min === null) return null;
   return (
     <div
       className="absolute left-0 right-0 flex items-center pointer-events-none z-20"
@@ -203,6 +374,3 @@ function NowLine() {
     </div>
   );
 }
-
-// Used to silence the unused-import warning for SNAP_MIN in dev.
-void SNAP_MIN;
