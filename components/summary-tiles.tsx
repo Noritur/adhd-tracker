@@ -1,7 +1,7 @@
 import { Flame, Sun, Users, Moon, type LucideIcon } from "lucide-react";
 import type { Block } from "@/lib/db/blocks";
 import type { Category } from "@/lib/categories";
-import { formatDuration, isoToLocalDayMinutes } from "@/lib/time/slots";
+import { formatDuration } from "@/lib/time/slots";
 
 function sumMinutesByCategory(
   blocks: Block[],
@@ -11,7 +11,9 @@ function sumMinutesByCategory(
     .filter((b) => cats.includes(b.category))
     .reduce(
       (acc, b) =>
-        acc + (isoToLocalDayMinutes(b.end_at) - isoToLocalDayMinutes(b.start_at)),
+        acc +
+        (new Date(b.end_at).getTime() - new Date(b.start_at).getTime()) /
+          60_000,
       0,
     );
 }

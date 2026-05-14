@@ -3,6 +3,8 @@ import { LogOut } from "lucide-react";
 import { Suspense } from "react";
 import { createClient } from "@/lib/supabase/server";
 import { getBlocksForRange } from "@/lib/db/blocks";
+import { getProfile, profileTimezone } from "@/lib/db/profile";
+import { getYMDInTZ, localWeekBoundsUTC } from "@/lib/time/tz";
 import { SummaryTiles } from "@/components/summary-tiles";
 import { WeeklyHeatmap } from "@/components/weekly-heatmap";
 import { BottomNav } from "@/components/bottom-nav";
@@ -26,25 +28,13 @@ const MONTHS = [
   "грудня",
 ];
 
-/** Get Monday of the current week in local time. */
-function getMondayOfWeek(d: Date): Date {
-  const day = d.getDay(); // 0 = Sunday
-  const mondayOffset = day === 0 ? -6 : 1 - day;
-  const monday = new Date(d);
-  monday.setDate(d.getDate() + mondayOffset);
-  monday.setHours(0, 0, 0, 0);
-  return monday;
-}
-
-function formatRange(start: Date, end: Date): string {
-  const startDay = start.getDate();
-  const endDay = end.getDate();
-  const startMonth = MONTHS[start.getMonth()];
-  const endMonth = MONTHS[end.getMonth()];
-  if (start.getMonth() === end.getMonth()) {
-    return `${startDay}-${endDay} ${startMonth}`;
+function formatRangeFromYMDs(startYMD: string, endYMD: string): string {
+  const [, sm, sd] = startYMD.split("-").map(Number);
+  const [, em, ed] = endYMD.split("-").map(Number);
+  if (sm === em) {
+    return `${sd}-${ed} ${MONTHS[sm - 1]}`;
   }
-  return `${startDay} ${startMonth} — ${endDay} ${endMonth}`;
+  return `${sd} ${MONTHS[sm - 1]} — ${ed} ${MONTHS[em - 1]}`;
 }
 
 export default async function WeekPage() {
@@ -54,21 +44,19 @@ export default async function WeekPage() {
   } = await supabase.auth.getUser();
   if (!user) redirect("/sign-in");
 
+  const profile = await getProfile(supabase, user.id);
+  const tz = profileTimezone(profile);
   const now = new Date();
-  const monday = getMondayOfWeek(now);
-  const sunday = new Date(monday);
-  sunday.setDate(monday.getDate() + 6);
-  const weekEndExclusive = new Date(monday);
-  weekEndExclusive.setDate(monday.getDate() + 7);
+  const { start: weekStart, end: weekEnd } = localWeekBoundsUTC(now, tz);
+  // Sunday-local = day before weekEnd, computed via the Saturday probe.
+  const sundayProbe = new Date(weekEnd.getTime() - 24 * 60 * 60 * 1000);
 
-  const blocks = await getBlocksForRange(
-    supabase,
-    user.id,
-    monday,
-    weekEndExclusive,
+  const blocks = await getBlocksForRange(supabase, user.id, weekStart, weekEnd);
+
+  const rangeLabel = formatRangeFromYMDs(
+    getYMDInTZ(weekStart, tz),
+    getYMDInTZ(sundayProbe, tz),
   );
-
-  const rangeLabel = formatRange(monday, sunday);
 
   return (
     <main className="min-h-screen flex flex-col bg-background">
@@ -102,7 +90,7 @@ export default async function WeekPage() {
         <Suspense fallback={<InsightsCardSkeleton />}>
           <InsightsCard scope="week" />
         </Suspense>
-        <WeeklyHeatmap blocks={blocks} weekStart={monday} />
+        <WeeklyHeatmap blocks={blocks} weekStart={weekStart} tz={tz} />
         {blocks.length === 0 && (
           <div className="bg-card border border-border rounded-2xl p-6 text-center text-sm text-muted-foreground">
             ще нема блоків за тиждень. почни на{" "}

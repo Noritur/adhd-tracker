@@ -1,5 +1,6 @@
 import { CATEGORIES_BY_VALUE, type Category } from "@/lib/categories";
 import type { Block } from "@/lib/db/blocks";
+import { getYMDInTZ, localDateTimeToUTC } from "@/lib/time/tz";
 
 const BUCKET_HOURS = 4;
 const BUCKETS_PER_DAY = 24 / BUCKET_HOURS; // 6
@@ -13,13 +14,19 @@ type BucketContent = {
 
 function computeBucket(
   blocks: Block[],
-  day: Date,
+  dayYMD: string,
   bucketIdx: number,
+  tz: string,
 ): BucketContent {
-  const bucketStart = new Date(day);
-  bucketStart.setHours(bucketIdx * BUCKET_HOURS, 0, 0, 0);
-  const bucketEnd = new Date(bucketStart);
-  bucketEnd.setHours(bucketStart.getHours() + BUCKET_HOURS);
+  const startHour = bucketIdx * BUCKET_HOURS;
+  const bucketStart = localDateTimeToUTC(
+    dayYMD,
+    `${String(startHour).padStart(2, "0")}:00`,
+    tz,
+  );
+  const bucketEnd = new Date(
+    bucketStart.getTime() + BUCKET_HOURS * 60 * 60 * 1000,
+  );
 
   const totals: Partial<Record<Category, number>> = {};
   for (const block of blocks) {
@@ -50,14 +57,17 @@ function computeBucket(
 export function WeeklyHeatmap({
   blocks,
   weekStart,
+  tz,
 }: {
   blocks: Block[];
-  weekStart: Date; // Monday local
+  weekStart: Date; // UTC instant of local-Monday-midnight in tz
+  tz: string;
 }) {
-  const days: Date[] = Array.from({ length: 7 }, (_, i) => {
-    const d = new Date(weekStart);
-    d.setDate(weekStart.getDate() + i);
-    return d;
+  // 7 consecutive local-days starting from Monday — derive YMD strings.
+  const dayYMDs: string[] = Array.from({ length: 7 }, (_, i) => {
+    // Advance by 24h * i; DST may shift by an hour but YMD rolls correctly.
+    const probe = new Date(weekStart.getTime() + i * 24 * 60 * 60 * 1000);
+    return getYMDInTZ(probe, tz);
   });
 
   return (
@@ -69,9 +79,9 @@ export function WeeklyHeatmap({
 
       {/* Day labels row */}
       <div className="grid grid-cols-7 gap-1.5">
-        {days.map((day, i) => (
+        {dayYMDs.map((ymd, i) => (
           <div
-            key={day.toISOString()}
+            key={ymd}
             className="text-center text-[10px] font-bold uppercase tracking-wider text-muted-foreground"
           >
             {WEEKDAYS_SHORT[i]}
@@ -83,8 +93,8 @@ export function WeeklyHeatmap({
       <div className="flex flex-col gap-1.5">
         {Array.from({ length: BUCKETS_PER_DAY }, (_, bucketIdx) => (
           <div key={bucketIdx} className="grid grid-cols-7 gap-1.5">
-            {days.map((day) => {
-              const cell = computeBucket(blocks, day, bucketIdx);
+            {dayYMDs.map((ymd) => {
+              const cell = computeBucket(blocks, ymd, bucketIdx, tz);
               const meta = cell.dominant
                 ? CATEGORIES_BY_VALUE[cell.dominant]
                 : null;
@@ -94,7 +104,7 @@ export function WeeklyHeatmap({
                   : Math.max(0.3, Math.min(1, cell.totalMinutes / BUCKET_MINUTES));
               return (
                 <div
-                  key={day.toISOString()}
+                  key={ymd}
                   className="h-6 rounded-md border border-border/30"
                   style={{
                     backgroundColor: meta?.cssVar ?? "transparent",

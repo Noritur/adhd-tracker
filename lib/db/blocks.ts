@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Category } from "@/lib/categories";
+import { DEFAULT_TIMEZONE, localDayBoundsUTC } from "@/lib/time/tz";
 
 // Our server/browser clients are schema-scoped to `adhd_tracker`. The
 // generic on SupabaseClient encodes the schema name, so we accept any
@@ -35,13 +36,9 @@ export async function getBlocksForDate(
   client: DbClient,
   userId: string,
   localDate: Date,
+  tz: string = DEFAULT_TIMEZONE,
 ): Promise<Block[]> {
-  // Calculate local-midnight bounds in browser's TZ (server matches user
-  // intent better than UTC bounds for Europe/Madrid timezone).
-  const start = new Date(localDate);
-  start.setHours(0, 0, 0, 0);
-  const end = new Date(start);
-  end.setDate(end.getDate() + 1);
+  const { start, end } = localDayBoundsUTC(localDate, tz);
 
   const { data, error } = await client
     .from("time_blocks")
@@ -56,21 +53,21 @@ export async function getBlocksForDate(
 }
 
 /**
- * Fetch every block whose start_at falls inside [startLocal, endLocal).
- * Used by /week — passes Monday→Sunday local-midnight bounds.
+ * Fetch every block whose start_at falls inside [startUTC, endUTC).
+ * Callers pre-compute UTC bounds (e.g. via localWeekBoundsUTC).
  */
 export async function getBlocksForRange(
   client: DbClient,
   userId: string,
-  startLocal: Date,
-  endLocal: Date,
+  startUTC: Date,
+  endUTC: Date,
 ): Promise<Block[]> {
   const { data, error } = await client
     .from("time_blocks")
     .select("id, user_id, start_at, end_at, category, label")
     .eq("user_id", userId)
-    .gte("start_at", startLocal.toISOString())
-    .lt("start_at", endLocal.toISOString())
+    .gte("start_at", startUTC.toISOString())
+    .lt("start_at", endUTC.toISOString())
     .order("start_at", { ascending: true });
 
   if (error) throw error;

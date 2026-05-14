@@ -1,5 +1,6 @@
 import type { Block } from "@/lib/db/blocks";
-import { CATEGORIES_BY_VALUE, type Category } from "@/lib/categories";
+import type { Profile } from "@/lib/db/profile";
+import { CATEGORIES, CATEGORIES_BY_VALUE, type Category } from "@/lib/categories";
 import {
   formatDuration,
   isoToLocalDayMinutes,
@@ -8,6 +9,13 @@ import {
 import { COACH_VOICE } from "./master-prompt";
 
 export type InsightScope = "today" | "week";
+
+export type ExistingBlockLite = {
+  start: string; // "HH:MM"
+  end: string;
+  category: string;
+  label: string | null;
+};
 
 function blockDurationMin(b: Block): number {
   return (
@@ -125,4 +133,92 @@ ${byDay}
 2. recommendation — один четкий совет на следующую неделю. конкретное направление, не общие слова.
 
 помни tone of voice: только строчные, живо, остро, без шаблонов.`;
+}
+
+export function buildReviewPrompt(
+  profile: Profile | null,
+  blocks: Block[],
+): string {
+  const tone = profile?.ai_tone ?? "gentle";
+  const summary = summarizeByCategory(blocks);
+  const timeline = summarizeTimeline(blocks);
+
+  return `${COACH_VOICE}
+
+---
+
+контекст: день закончился. это вечернее ревью. посмотри как прошел мой день в трекере.
+
+тон: ${tone === "firm" ? "жесткий, прямой, можешь ругнуть за откладывание" : "мягкий, заботливый, но честный"}
+
+итоги по категориям:
+${summary}
+
+таймлайн:
+${timeline || "(пусто)"}
+
+всего блоков: ${blocks.length}
+
+твоя задача — два поля:
+1. summary — короткое отражение дня (2-3 фразы). что я реально сделал, на что потратился, чего избегал. без faq-вступлений. без "сегодня ты..." — пиши как другу.
+2. recommendation — один четкий совет или вопрос на завтра. конкретное действие или вопрос-крючок чтобы я задумался. не общая мудрость.
+
+помни tone of voice: только строчные, живо, остро, без шаблонов.`;
+}
+
+export function buildPlannerPrompt(
+  userText: string,
+  profile: Profile | null,
+  existing: ExistingBlockLite[],
+  ymd: string,
+  tz: string,
+): string {
+  const workStart = (profile?.work_hours_start ?? "09:00:00").slice(0, 5);
+  const workEnd = (profile?.work_hours_end ?? "18:00:00").slice(0, 5);
+  const tone = profile?.ai_tone ?? "gentle";
+
+  const existingText =
+    existing.length === 0
+      ? "(пусто)"
+      : existing
+          .map((e) => {
+            const cat =
+              CATEGORIES_BY_VALUE[e.category as Category]?.label ?? e.category;
+            return `${e.start}-${e.end} ${cat}${e.label ? ` — ${e.label}` : ""}`;
+          })
+          .join("\n");
+
+  const catList = CATEGORIES.map((c) => `${c.value} (${c.label})`).join(", ");
+
+  return `${COACH_VOICE}
+
+---
+
+контекст: я говорю тебе что мне сегодня надо. ты помогаешь распланировать день в блоки времени.
+
+сегодня: ${ymd}
+часовой пояс: ${tz}
+рабочие часы: ${workStart}-${workEnd}
+тон: ${tone === "firm" ? "жесткий, прямой, ругаешь за хаос" : "мягкий, заботливый, но честный"}
+
+уже есть блоки на сегодня (НЕ ТРОГАЙ, ОБХОДИ):
+${existingText}
+
+я говорю:
+${userText}
+
+твоя задача — верни план блоков на сегодня:
+- start, end: "HH:MM" в местном времени, 24h формат
+- category: одно из [${catList}]
+- label: короткий ярлык на украинском или русском (3-5 слов), или null
+- каждый блок минимум 15 минут
+- НЕ пересекайся с уже существующими блоками сверху
+- учитывай рабочие часы для coded/work_other
+- между блоками оставляй буферы где разумно (15-30 мин)
+- не планируй плотнее реальности — лучше меньше блоков но честно
+- учитывай мой adhd: после фокус-сессии (1-2ч) — обязательно отдых или прогулка
+
+также можешь добавить короткое поле note (одна фраза, коучская) — если есть что сказать о плане, иначе null.
+
+формат — строго JSON по схеме. tone of voice: только строчные, живо, прямо.`;
 }

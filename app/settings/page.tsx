@@ -1,7 +1,9 @@
 import { redirect } from "next/navigation";
 import { LogOut } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
+import { getProfile } from "@/lib/db/profile";
 import { BottomNav } from "@/components/bottom-nav";
+import { SettingsForm } from "@/components/settings-form";
 
 export default async function SettingsPage() {
   const supabase = await createClient();
@@ -9,6 +11,8 @@ export default async function SettingsPage() {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) redirect("/sign-in");
+
+  const profile = await getProfile(supabase, user.id);
 
   return (
     <main className="min-h-screen flex flex-col bg-background">
@@ -21,12 +25,13 @@ export default async function SettingsPage() {
         </div>
       </header>
 
-      <div className="px-4 py-5 pb-32 flex flex-col gap-4">
-        <Section title="Я">
-          <Row label="email" value={user.email ?? ""} />
-        </Section>
+      <div className="px-4 py-5 pb-32 flex flex-col gap-6">
+        <SettingsForm profile={profile} email={user.email ?? ""} />
 
-        <Section title="Акаунт">
+        <div className="flex flex-col gap-2">
+          <span className="text-xs uppercase tracking-wider text-muted-foreground font-bold pl-1">
+            Акаунт
+          </span>
           <form action="/auth/sign-out" method="post">
             <button
               type="submit"
@@ -36,40 +41,10 @@ export default async function SettingsPage() {
               <LogOut className="w-4 h-4" />
             </button>
           </form>
-        </Section>
-
-        <p className="text-xs text-muted-foreground text-center mt-4">
-          більше налаштувань — у наступних днях (Day 6).
-        </p>
+        </div>
       </div>
 
       <BottomNav />
     </main>
-  );
-}
-
-function Section({
-  title,
-  children,
-}: {
-  title: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="flex flex-col gap-2">
-      <span className="text-xs uppercase tracking-wider text-muted-foreground font-bold pl-1">
-        {title}
-      </span>
-      {children}
-    </div>
-  );
-}
-
-function Row({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex items-center justify-between bg-card border border-border rounded-2xl p-4">
-      <span className="text-sm text-muted-foreground">{label}</span>
-      <span className="text-sm font-semibold tabular-nums">{value}</span>
-    </div>
   );
 }

@@ -40,8 +40,11 @@ export async function updateSession(request: NextRequest) {
   const isAuthRoute =
     pathname.startsWith("/sign-in") || pathname.startsWith("/auth");
   const isSetPassword = pathname.startsWith("/set-password");
+  // API routes manage their own auth (cron Bearer for /api/review,
+  // user-session 401 for /api/insights). Skip page-style redirects here.
+  const isApiRoute = pathname.startsWith("/api/");
 
-  if (!user && !isAuthRoute) {
+  if (!user && !isAuthRoute && !isApiRoute) {
     const url = request.nextUrl.clone();
     url.pathname = "/sign-in";
     return NextResponse.redirect(url);
@@ -53,9 +56,7 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  // Soft-enforce password setup: nudge authenticated users without a password
-  // (and who didn't explicitly skip) toward /set-password.
-  if (user && !isAuthRoute && !isSetPassword) {
+  if (user && !isAuthRoute && !isSetPassword && !isApiRoute) {
     const passwordSet = user.user_metadata?.password_set;
     if (!passwordSet) {
       const url = request.nextUrl.clone();
