@@ -1,10 +1,15 @@
 import { redirect } from "next/navigation";
 import { LogOut } from "lucide-react";
+import { Suspense } from "react";
 import { createClient } from "@/lib/supabase/server";
 import { getBlocksForRange } from "@/lib/db/blocks";
 import { SummaryTiles } from "@/components/summary-tiles";
 import { WeeklyHeatmap } from "@/components/weekly-heatmap";
 import { BottomNav } from "@/components/bottom-nav";
+import {
+  InsightsCard,
+  InsightsCardSkeleton,
+} from "@/components/insights-card";
 
 const MONTHS = [
   "січня",
@@ -94,6 +99,9 @@ export default async function WeekPage() {
 
       <div className="px-4 py-5 pb-32 flex flex-col gap-5">
         <SummaryTiles blocks={blocks} />
+        <Suspense fallback={<InsightsCardSkeleton />}>
+          <InsightsCard scope="week" />
+        </Suspense>
         <WeeklyHeatmap blocks={blocks} weekStart={monday} />
         {blocks.length === 0 && (
           <div className="bg-card border border-border rounded-2xl p-6 text-center text-sm text-muted-foreground">

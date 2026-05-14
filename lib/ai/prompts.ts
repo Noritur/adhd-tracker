@@ -1,0 +1,128 @@
+import type { Block } from "@/lib/db/blocks";
+import { CATEGORIES_BY_VALUE, type Category } from "@/lib/categories";
+import {
+  formatDuration,
+  isoToLocalDayMinutes,
+  formatTime,
+} from "@/lib/time/slots";
+import { COACH_VOICE } from "./master-prompt";
+
+export type InsightScope = "today" | "week";
+
+function blockDurationMin(b: Block): number {
+  return (
+    Math.max(
+      0,
+      new Date(b.end_at).getTime() - new Date(b.start_at).getTime(),
+    ) / 60_000
+  );
+}
+
+function summarizeByCategory(blocks: Block[]): string {
+  if (blocks.length === 0) return "ничего не залогано";
+  const totals: Partial<Record<Category, number>> = {};
+  for (const b of blocks) {
+    totals[b.category] = (totals[b.category] ?? 0) + blockDurationMin(b);
+  }
+  return (Object.entries(totals) as [Category, number][])
+    .sort(([, a], [, b]) => b - a)
+    .map(
+      ([cat, min]) =>
+        `• ${CATEGORIES_BY_VALUE[cat].label}: ${formatDuration(Math.round(min))}`,
+    )
+    .join("\n");
+}
+
+function summarizeTimeline(blocks: Block[]): string {
+  if (blocks.length === 0) return "";
+  return blocks
+    .slice() // copy
+    .sort(
+      (a, b) =>
+        new Date(a.start_at).getTime() - new Date(b.start_at).getTime(),
+    )
+    .map((b) => {
+      const startMin = isoToLocalDayMinutes(b.start_at);
+      const endMin = isoToLocalDayMinutes(b.end_at);
+      const cat = CATEGORIES_BY_VALUE[b.category].label;
+      const label = b.label ? ` — ${b.label}` : "";
+      return `${formatTime(startMin)}-${formatTime(endMin)} ${cat}${label}`;
+    })
+    .join("\n");
+}
+
+function summarizeByDay(blocks: Block[]): string {
+  if (blocks.length === 0) return "ничего не залогано";
+  const byDay: Record<string, Partial<Record<Category, number>>> = {};
+  for (const b of blocks) {
+    const day = new Date(b.start_at).toISOString().split("T")[0];
+    byDay[day] = byDay[day] ?? {};
+    byDay[day][b.category] =
+      (byDay[day][b.category] ?? 0) + blockDurationMin(b);
+  }
+  return Object.entries(byDay)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([day, totals]) => {
+      const parts = (Object.entries(totals) as [Category, number][])
+        .sort(([, a], [, b]) => b - a)
+        .map(
+          ([cat, min]) =>
+            `${CATEGORIES_BY_VALUE[cat].label} ${formatDuration(Math.round(min))}`,
+        )
+        .join(", ");
+      return `${day}: ${parts}`;
+    })
+    .join("\n");
+}
+
+export function buildInsightPrompt(
+  scope: InsightScope,
+  blocks: Block[],
+): string {
+  if (scope === "today") {
+    const summary = summarizeByCategory(blocks);
+    const timeline = summarizeTimeline(blocks);
+    return `${COACH_VOICE}
+
+---
+
+контекст: смотри на мой сегодняшний день в трекере.
+
+общие итоги по категориям:
+${summary}
+
+таймлайн сегодня:
+${timeline || "(пусто)"}
+
+всего блоков: ${blocks.length}
+
+твоя задача дать мне:
+1. observation — короткий инсайт по тому что ты видишь в моем сегодняшнем ритме. что я избегаю, что повторяется, где есть энергия или провал. одной-двумя фразами. без faq-вступлений.
+2. recommendation — один четкий совет или задача на остаток дня. конкретное действие или вопрос. не общая мудрость.
+
+помни tone of voice: только строчные, живо, остро, без шаблонов.`;
+  }
+
+  // week scope
+  const summary = summarizeByCategory(blocks);
+  const byDay = summarizeByDay(blocks);
+  return `${COACH_VOICE}
+
+---
+
+контекст: смотри на мой последний 7-дневный период в трекере.
+
+итоги по категориям за неделю:
+${summary}
+
+разбивка по дням:
+${byDay}
+
+всего блоков: ${blocks.length}
+
+твоя задача дать мне:
+1. observation — короткий инсайт по тенденциям за неделю. где паттерн, что я повторяю или избегаю, как идет энергия по дням. одной-двумя фразами.
+2. recommendation — один четкий совет на следующую неделю. конкретное направление, не общие слова.
+
+помни tone of voice: только строчные, живо, остро, без шаблонов.`;
+}

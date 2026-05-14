@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { LogOut } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
@@ -5,6 +6,10 @@ import { getBlocksForDate } from "@/lib/db/blocks";
 import { TimelineDay } from "@/components/timeline/timeline-day";
 import { SummaryTiles } from "@/components/summary-tiles";
 import { BottomNav } from "@/components/bottom-nav";
+import {
+  InsightsCard,
+  InsightsCardSkeleton,
+} from "@/components/insights-card";
 
 const WEEKDAYS = [
   "неділя",
@@ -74,6 +79,9 @@ export default async function TodayPage() {
 
       <div className="px-4 py-5 pb-32 flex flex-col gap-5">
         <SummaryTiles blocks={blocks} />
+        <Suspense fallback={<InsightsCardSkeleton />}>
+          <InsightsCard scope="today" />
+        </Suspense>
         <TimelineDay
           initialBlocks={blocks}
           dateISO={today.toISOString()}
