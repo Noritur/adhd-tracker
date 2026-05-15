@@ -19,6 +19,35 @@ import { MIN_BLOCK_MIN, formatTime, timeStringToMin } from "@/lib/time/slots";
 import { generatePlan } from "@/lib/ai/planner";
 import type { ExistingBlockLite } from "@/lib/ai/prompts";
 import { setReviewResponse, type ReviewResponse } from "@/lib/db/reviews";
+import {
+  MAX_FOCUS_MIN,
+  isFocus,
+  validateFocusBlock,
+  type FocusCheckBlock,
+} from "@/lib/rules/focus-limits";
+
+/** Load same-day blocks as FocusCheckBlock[], excluding one id (for edits). */
+async function focusContext(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  userId: string,
+  anchorISO: string,
+  tz: string,
+  excludeId: number | null,
+): Promise<FocusCheckBlock[]> {
+  const day = await getBlocksForDate(
+    supabase,
+    userId,
+    new Date(anchorISO),
+    tz,
+  );
+  return day
+    .filter((b) => b.id !== excludeId)
+    .map((b) => ({
+      category: b.category,
+      startMs: new Date(b.start_at).getTime(),
+      endMs: new Date(b.end_at).getTime(),
+    }));
+}
 
 export type SaveBlockState = { error?: string };
 
@@ -47,9 +76,31 @@ export async function saveBlockAction(
   } = await supabase.auth.getUser();
   if (!user) return { error: "not authenticated" };
 
+  if (isFocus(category)) {
+    const profile = await getProfile(supabase, user.id);
+    const tz = profileTimezone(profile);
+    const others = await focusContext(supabase, user.id, start_at, tz, id);
+    const check = validateFocusBlock(
+      {
+        category,
+        startMs: new Date(start_at).getTime(),
+        endMs: new Date(end_at).getTime(),
+      },
+      others,
+    );
+    if (!check.ok) return { error: check.error };
+  }
+
   try {
     if (id) {
-      await updateBlock(supabase, id, { start_at, end_at, category, label });
+      await updateBlock(supabase, id, {
+        start_at,
+        end_at,
+        category,
+        label,
+        notified_ending_at: null,
+        notified_started_at: null,
+      });
     } else {
       await createBlock(supabase, {
         user_id: user.id,
@@ -92,8 +143,44 @@ export async function updateBlockTimesAction(
   } = await supabase.auth.getUser();
   if (!user) return { error: "not authenticated" };
 
+  {
+    const profile = await getProfile(supabase, user.id);
+    const tz = profileTimezone(profile);
+    const day = await getBlocksForDate(
+      supabase,
+      user.id,
+      new Date(start_at),
+      tz,
+    );
+    const self = day.find((b) => b.id === id);
+    if (self && isFocus(self.category)) {
+      const others: FocusCheckBlock[] = day
+        .filter((b) => b.id !== id)
+        .map((b) => ({
+          category: b.category,
+          startMs: new Date(b.start_at).getTime(),
+          endMs: new Date(b.end_at).getTime(),
+        }));
+      const check = validateFocusBlock(
+        {
+          category: self.category,
+          startMs: new Date(start_at).getTime(),
+          endMs: new Date(end_at).getTime(),
+        },
+        others,
+      );
+      if (!check.ok) return { error: check.error };
+    }
+  }
+
   try {
-    await updateBlock(supabase, id, { start_at, end_at });
+    await updateBlock(supabase, id, {
+      start_at,
+      end_at,
+      // Block moved → its notify state is stale; clear so reminders re-fire.
+      notified_ending_at: null,
+      notified_started_at: null,
+    });
   } catch (e) {
     const raw = e instanceof Error ? e.message : "update failed";
     console.error(
@@ -197,10 +284,12 @@ export async function generatePlanAction(
   const plan = await generatePlan(userText, profile, existingLite, ymd, tz);
   if (!plan) return { ok: false, error: "AI не зміг скласти план, спробуй ще" };
 
-  const busy: { start: number; end: number }[] = existingLite.map((b) => ({
-    start: timeStringToMin(b.start),
-    end: timeStringToMin(b.end),
-  }));
+  const busy: { start: number; end: number; category: Category }[] =
+    existing.map((b) => ({
+      start: timeStringToMin(getHHMMInTZ(new Date(b.start_at), tz)),
+      end: timeStringToMin(getHHMMInTZ(new Date(b.end_at), tz)),
+      category: b.category,
+    }));
 
   let created = 0;
   let skipped = 0;
@@ -224,26 +313,42 @@ export async function generatePlanAction(
       continue;
     }
 
-    const startISO = localDateTimeToUTC(
-      ymd,
-      formatTime(slot.start),
-      tz,
-    ).toISOString();
-    const endISO = localDateTimeToUTC(
-      ymd,
-      formatTime(slot.end),
-      tz,
-    ).toISOString();
+    const cat = blk.category as Category;
+    let sMin = slot.start;
+    let eMin = slot.end;
+
+    // Cap focus blocks at 50 min (planner trims rather than dropping).
+    if (isFocus(cat) && eMin - sMin > MAX_FOCUS_MIN) {
+      eMin = sMin + MAX_FOCUS_MIN;
+    }
+
+    // Enforce 15-min spacing between focus blocks; skip if too tight.
+    if (isFocus(cat)) {
+      const tooTight = busy.some((b) => {
+        if (!isFocus(b.category)) return false;
+        const overlaps = sMin < b.end && b.start < eMin;
+        if (overlaps) return false;
+        const gap = eMin <= b.start ? b.start - eMin : sMin - b.end;
+        return gap < 15;
+      });
+      if (tooTight) {
+        skipped++;
+        continue;
+      }
+    }
+
+    const startISO = localDateTimeToUTC(ymd, formatTime(sMin), tz).toISOString();
+    const endISO = localDateTimeToUTC(ymd, formatTime(eMin), tz).toISOString();
 
     try {
       await createBlock(supabase, {
         user_id: user.id,
         start_at: startISO,
         end_at: endISO,
-        category: blk.category as Category,
+        category: cat,
         label: blk.label,
       });
-      busy.push({ start: slot.start, end: slot.end });
+      busy.push({ start: sMin, end: eMin, category: cat });
       created++;
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);

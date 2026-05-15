@@ -30,7 +30,41 @@ export type BlockPatch = Partial<{
   end_at: string;
   category: Category;
   label: string | null;
+  notified_ending_at: string | null;
+  notified_started_at: string | null;
 }>;
+
+export type TickBlock = {
+  id: number;
+  user_id: string;
+  start_at: string;
+  end_at: string;
+  category: Category;
+  label: string | null;
+  notified_ending_at: string | null;
+  notified_started_at: string | null;
+};
+
+/** Same-day blocks including notify columns — for the block-tick cron. */
+export async function getBlocksForTick(
+  client: DbClient,
+  userId: string,
+  localDate: Date,
+  tz: string = DEFAULT_TIMEZONE,
+): Promise<TickBlock[]> {
+  const { start, end } = localDayBoundsUTC(localDate, tz);
+  const { data, error } = await client
+    .from("time_blocks")
+    .select(
+      "id, user_id, start_at, end_at, category, label, notified_ending_at, notified_started_at",
+    )
+    .eq("user_id", userId)
+    .gte("start_at", start.toISOString())
+    .lt("start_at", end.toISOString())
+    .order("start_at", { ascending: true });
+  if (error) throw error;
+  return (data ?? []) as TickBlock[];
+}
 
 export async function getBlocksForDate(
   client: DbClient,
