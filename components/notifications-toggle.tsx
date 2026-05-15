@@ -179,15 +179,18 @@ export function NotificationsToggle({
         onClick={on ? disable : enable}
         disabled={pending}
         aria-pressed={on}
-        className={`relative w-11 h-6 rounded-full transition-colors disabled:opacity-50 ${
-          on ? "bg-primary" : "bg-muted"
+        className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors disabled:opacity-50 flex items-center gap-2 ${
+          on
+            ? "bg-primary text-primary-foreground border-primary"
+            : "bg-card text-foreground border-border hover:bg-muted/40"
         }`}
       >
         <span
-          className={`absolute top-0.5 w-5 h-5 rounded-full bg-card shadow-sm transition-transform ${
-            on ? "translate-x-5" : "translate-x-0.5"
+          className={`inline-block w-2 h-2 rounded-full ${
+            on ? "bg-primary-foreground" : "bg-muted-foreground"
           }`}
         />
+        {pending ? "зачекай..." : on ? "увімкнено" : "увімкнути"}
       </button>
     </Row>
   );
