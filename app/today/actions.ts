@@ -7,6 +7,7 @@ import {
   updateBlock,
   deleteBlock,
   getBlocksForDate,
+  type Mood,
 } from "@/lib/db/blocks";
 import type { Category } from "@/lib/categories";
 import { getProfile, profileTimezone } from "@/lib/db/profile";
@@ -390,6 +391,34 @@ export async function markReviewAction(formData: FormData): Promise<void> {
       JSON.stringify({
         level: "error",
         msg: "today.mark_review_failed",
+        error: e instanceof Error ? e.message : String(e),
+      }),
+    );
+  }
+
+  revalidatePath("/today");
+}
+
+export async function setBlockMoodAction(formData: FormData): Promise<void> {
+  const id = Number(formData.get("id"));
+  const moodRaw = String(formData.get("mood"));
+  if (!id) return;
+  if (moodRaw !== "fire" && moodRaw !== "ok" && moodRaw !== "swamp") return;
+  const mood = moodRaw as Mood;
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return;
+
+  try {
+    await updateBlock(supabase, id, { mood });
+  } catch (e) {
+    console.error(
+      JSON.stringify({
+        level: "error",
+        msg: "today.set_mood_failed",
         error: e instanceof Error ? e.message : String(e),
       }),
     );

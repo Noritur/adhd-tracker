@@ -54,7 +54,15 @@ function summarizeTimeline(blocks: Block[]): string {
       const endMin = isoToLocalDayMinutes(b.end_at);
       const cat = CATEGORIES_BY_VALUE[b.category].label;
       const label = b.label ? ` — ${b.label}` : "";
-      return `${formatTime(startMin)}-${formatTime(endMin)} ${cat}${label}`;
+      const mood =
+        b.mood === "fire"
+          ? " [энергия: на подъёме]"
+          : b.mood === "ok"
+            ? " [энергия: норм]"
+            : b.mood === "swamp"
+              ? " [энергия: тяжело/болото]"
+              : "";
+      return `${formatTime(startMin)}-${formatTime(endMin)} ${cat}${label}${mood}`;
     })
     .join("\n");
 }

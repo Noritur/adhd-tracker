@@ -14,6 +14,7 @@ import {
 } from "@/components/insights-card";
 import { MorningPlanner } from "@/components/morning-planner";
 import { EveningReviewCard } from "@/components/evening-review-card";
+import { MoodCheckCard } from "@/components/mood-check-card";
 
 const WEEKDAYS = [
   "неділя",
@@ -88,6 +89,7 @@ export default async function TodayPage() {
 
       <div className="px-4 py-5 pb-32 flex flex-col gap-5">
         <EveningReviewCard />
+        <MoodCheckCard />
         <MorningPlanner />
         <SummaryTiles blocks={blocks} />
         <Suspense fallback={<InsightsCardSkeleton />}>

@@ -8,6 +8,8 @@ import { DEFAULT_TIMEZONE, localDayBoundsUTC } from "@/lib/time/tz";
 // biome-ignore lint/suspicious/noExplicitAny: schema generic intentionally loose
 type DbClient = SupabaseClient<any, any, any>;
 
+export type Mood = "fire" | "ok" | "swamp";
+
 export type Block = {
   id: number;
   user_id: string;
@@ -15,6 +17,7 @@ export type Block = {
   end_at: string;
   category: Category;
   label: string | null;
+  mood: Mood | null;
 };
 
 export type BlockInsert = {
@@ -30,6 +33,7 @@ export type BlockPatch = Partial<{
   end_at: string;
   category: Category;
   label: string | null;
+  mood: Mood | null;
   notified_ending_at: string | null;
   notified_started_at: string | null;
 }>;
@@ -76,7 +80,7 @@ export async function getBlocksForDate(
 
   const { data, error } = await client
     .from("time_blocks")
-    .select("id, user_id, start_at, end_at, category, label")
+    .select("id, user_id, start_at, end_at, category, label, mood")
     .eq("user_id", userId)
     .gte("start_at", start.toISOString())
     .lt("start_at", end.toISOString())
@@ -98,7 +102,7 @@ export async function getBlocksForRange(
 ): Promise<Block[]> {
   const { data, error } = await client
     .from("time_blocks")
-    .select("id, user_id, start_at, end_at, category, label")
+    .select("id, user_id, start_at, end_at, category, label, mood")
     .eq("user_id", userId)
     .gte("start_at", startUTC.toISOString())
     .lt("start_at", endUTC.toISOString())
@@ -115,7 +119,7 @@ export async function createBlock(
   const { data, error } = await client
     .from("time_blocks")
     .insert(input)
-    .select("id, user_id, start_at, end_at, category, label")
+    .select("id, user_id, start_at, end_at, category, label, mood")
     .single();
 
   if (error) throw error;
@@ -131,7 +135,7 @@ export async function updateBlock(
     .from("time_blocks")
     .update(patch)
     .eq("id", id)
-    .select("id, user_id, start_at, end_at, category, label")
+    .select("id, user_id, start_at, end_at, category, label, mood")
     .single();
 
   if (error) throw error;

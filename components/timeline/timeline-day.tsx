@@ -396,6 +396,19 @@ function BlockChip({
         cursor,
       }}
     >
+      {block.mood && (
+        <span
+          className="absolute top-1 right-2 text-xs leading-none pointer-events-none"
+          aria-hidden
+        >
+          {block.mood === "fire"
+            ? "🔥"
+            : block.mood === "ok"
+              ? "😐"
+              : "🫠"}
+        </span>
+      )}
+
       {/* Resize hint bars — hidden on tight blocks so they don't eat text.
           Resize still works (handled by offsetY in onPointerDown). */}
       {!tight && (
