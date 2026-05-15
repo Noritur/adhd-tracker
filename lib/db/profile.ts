@@ -14,6 +14,7 @@ export type Profile = {
   ai_tone: AiTone;
   evening_review_at: string; // "HH:MM:SS"
   evening_review_enabled: boolean;
+  last_proactive_at: string | null;
   created_at: string;
 };
 

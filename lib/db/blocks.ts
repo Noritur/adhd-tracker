@@ -45,6 +45,7 @@ export type TickBlock = {
   end_at: string;
   category: Category;
   label: string | null;
+  mood: Mood | null;
   notified_ending_at: string | null;
   notified_started_at: string | null;
 };
@@ -60,7 +61,7 @@ export async function getBlocksForTick(
   const { data, error } = await client
     .from("time_blocks")
     .select(
-      "id, user_id, start_at, end_at, category, label, notified_ending_at, notified_started_at",
+      "id, user_id, start_at, end_at, category, label, mood, notified_ending_at, notified_started_at",
     )
     .eq("user_id", userId)
     .gte("start_at", start.toISOString())

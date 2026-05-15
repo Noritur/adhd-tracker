@@ -1,10 +1,51 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getBlocksForTick, updateBlock } from "@/lib/db/blocks";
+import { getBlocksForTick, updateBlock, type TickBlock } from "@/lib/db/blocks";
 import { getSubscriptionsForUser } from "@/lib/db/push-subscriptions";
 import { sendToSubscription } from "@/lib/push/send";
 import { CATEGORIES_BY_VALUE } from "@/lib/categories";
+import { isFocus } from "@/lib/rules/focus-limits";
+import { getYMDInTZ } from "@/lib/time/tz";
+import { generateCoachNudge, type NudgeKind } from "@/lib/ai/coach-nudge";
 import type { Profile } from "@/lib/db/profile";
+
+const FOCUS_GAP_MS = 15 * 60_000;
+
+/** Detect a proactive-coaching pattern among today's completed blocks. */
+function detectNudge(blocks: TickBlock[], nowMs: number): NudgeKind | null {
+  const completed = blocks
+    .filter((b) => new Date(b.end_at).getTime() <= nowMs)
+    .sort(
+      (a, b) =>
+        new Date(a.start_at).getTime() - new Date(b.start_at).getTime(),
+    );
+
+  // Priority 1: two most recent rated blocks both "swamp".
+  const rated = completed.filter((b) => b.mood !== null);
+  if (
+    rated.length >= 2 &&
+    rated[rated.length - 1].mood === "swamp" &&
+    rated[rated.length - 2].mood === "swamp"
+  ) {
+    return "swamp_streak";
+  }
+
+  // Priority 2: two focus blocks back-to-back with <15min non-focus gap.
+  let prevFocusEnd: number | null = null;
+  for (const b of completed) {
+    if (isFocus(b.category)) {
+      const startMs = new Date(b.start_at).getTime();
+      if (prevFocusEnd !== null && startMs - prevFocusEnd < FOCUS_GAP_MS) {
+        return "focus_no_break";
+      }
+      prevFocusEnd = new Date(b.end_at).getTime();
+    } else {
+      prevFocusEnd = null; // a real break happened
+    }
+  }
+
+  return null;
+}
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -42,7 +83,7 @@ async function handler(request: Request): Promise<Response> {
 
   const now = Date.now();
   const nowISO = new Date(now).toISOString();
-  const stats = { started: 0, ending: 0, users: 0, no_subs: 0 };
+  const stats = { started: 0, ending: 0, coached: 0, users: 0, no_subs: 0 };
 
   for (const p of (profiles ?? []) as Profile[]) {
     const subs = await getSubscriptionsForUser(admin, p.id);
@@ -100,6 +141,35 @@ async function handler(request: Request): Promise<Response> {
         );
         await updateBlock(admin, b.id, { notified_ending_at: nowISO });
         stats.ending++;
+      }
+    }
+
+    // Proactive coaching — max once per local day.
+    const alreadyToday =
+      p.last_proactive_at != null &&
+      getYMDInTZ(new Date(p.last_proactive_at), p.timezone) ===
+        getYMDInTZ(new Date(now), p.timezone);
+    if (!alreadyToday) {
+      const kind = detectNudge(blocks, now);
+      if (kind) {
+        const line = await generateCoachNudge(kind, p);
+        if (line) {
+          await Promise.all(
+            subs.map((s) =>
+              sendToSubscription(s, {
+                title: "коуч",
+                body: line,
+                url: "/today",
+                tag: `coach-${getYMDInTZ(new Date(now), p.timezone)}`,
+              }),
+            ),
+          );
+          await admin
+            .from("profiles")
+            .update({ last_proactive_at: nowISO })
+            .eq("id", p.id);
+          stats.coached++;
+        }
       }
     }
   }
