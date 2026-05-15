@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getProfile } from "@/lib/db/profile";
 import { BottomNav } from "@/components/bottom-nav";
 import { SettingsForm } from "@/components/settings-form";
+import { NotificationsToggle } from "@/components/notifications-toggle";
 
 export default async function SettingsPage() {
   const supabase = await createClient();
@@ -27,6 +28,19 @@ export default async function SettingsPage() {
 
       <div className="px-4 py-5 pb-32 flex flex-col gap-6">
         <SettingsForm profile={profile} email={user.email ?? ""} />
+
+        <div className="flex flex-col gap-2">
+          <span className="text-xs uppercase tracking-wider text-muted-foreground font-bold pl-1">
+            Сповіщення
+          </span>
+          <NotificationsToggle
+            vapidPublicKey={process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ?? ""}
+          />
+          <p className="text-xs text-muted-foreground pl-1">
+            на iOS — спочатку додай на головний екран (share → "На головний
+            екран"), потім увімкни тут.
+          </p>
+        </div>
 
         <div className="flex flex-col gap-2">
           <span className="text-xs uppercase tracking-wider text-muted-foreground font-bold pl-1">

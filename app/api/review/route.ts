@@ -5,6 +5,7 @@ import { insertReview } from "@/lib/db/reviews";
 import { generateReview } from "@/lib/ai/review";
 import { getHHMMInTZ, getYMDInTZ } from "@/lib/time/tz";
 import { timeStringToMin } from "@/lib/time/slots";
+import { sendToUser } from "@/lib/push/send";
 import type { Profile } from "@/lib/db/profile";
 
 export const dynamic = "force-dynamic";
@@ -90,6 +91,26 @@ async function handler(request: Request): Promise<Response> {
         raw_json: review,
       });
       stats.generated++;
+
+      // Fire-and-log: don't block cron stats on push delivery.
+      const preview = review.summary.length > 110
+        ? `${review.summary.slice(0, 107)}...`
+        : review.summary;
+      const pushResult = await sendToUser(p.id, {
+        title: "вечірнє ревью",
+        body: preview,
+        url: "/today",
+        tag: `review-${ymd}`,
+      });
+      console.log(
+        JSON.stringify({
+          level: "info",
+          msg: "cron.review.push_dispatched",
+          user: p.id,
+          sent: pushResult.sent,
+          failed: pushResult.failed,
+        }),
+      );
     } catch (e) {
       stats.failed++;
       console.error(

@@ -43,8 +43,17 @@ export async function updateSession(request: NextRequest) {
   // API routes manage their own auth (cron Bearer for /api/review,
   // user-session 401 for /api/insights). Skip page-style redirects here.
   const isApiRoute = pathname.startsWith("/api/");
+  // PWA assets must be fetchable without a session — browsers and OSes
+  // load them before/independent of login state.
+  const isPwaAsset =
+    pathname === "/manifest.webmanifest" ||
+    pathname === "/sw.js" ||
+    pathname === "/icon" ||
+    pathname === "/apple-icon" ||
+    pathname.startsWith("/icon/") ||
+    pathname.startsWith("/apple-icon/");
 
-  if (!user && !isAuthRoute && !isApiRoute) {
+  if (!user && !isAuthRoute && !isApiRoute && !isPwaAsset) {
     const url = request.nextUrl.clone();
     url.pathname = "/sign-in";
     return NextResponse.redirect(url);
@@ -56,7 +65,7 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  if (user && !isAuthRoute && !isSetPassword && !isApiRoute) {
+  if (user && !isAuthRoute && !isSetPassword && !isApiRoute && !isPwaAsset) {
     const passwordSet = user.user_metadata?.password_set;
     if (!passwordSet) {
       const url = request.nextUrl.clone();

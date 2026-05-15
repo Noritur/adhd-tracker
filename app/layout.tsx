@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "@/components/ui/sonner";
+import { ServiceWorkerRegister } from "@/components/sw-register";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -14,9 +15,18 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "adhd tracker — тихий режим для дня",
+  title: "ритм — тихий режим для дня",
   description:
     "трекер фокусу без зайвого шуму. блоки часу, вечірній огляд, м'який тренер.",
+  applicationName: "ритм",
+  appleWebApp: {
+    capable: true,
+    title: "ритм",
+    statusBarStyle: "black-translucent",
+  },
+  formatDetection: {
+    telephone: false,
+  },
 };
 
 export const viewport: Viewport = {
@@ -24,6 +34,7 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   maximumScale: 1,
+  viewportFit: "cover",
 };
 
 export default function RootLayout({
@@ -38,6 +49,7 @@ export default function RootLayout({
     >
       <body className="min-h-full flex flex-col bg-background text-foreground antialiased">
         {children}
+        <ServiceWorkerRegister />
         <Toaster richColors theme="dark" position="top-center" />
       </body>
     </html>
