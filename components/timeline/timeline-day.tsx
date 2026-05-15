@@ -267,6 +267,10 @@ function BlockChip({
   const startMin = isoToLocalDayMinutes(block.start_at);
   const endMin = isoToLocalDayMinutes(block.end_at);
   const height = Math.max(MIN_BLOCK_MIN, endMin - startMin) * PX_PER_MIN;
+  // Adaptive content tiers — keep geometry (1min=1px) untouched, only
+  // change how much text/padding fits.
+  const compact = height < 64;
+  const tight = height < 36;
   const meta = CATEGORIES_BY_VALUE[block.category];
 
   const dragRef = useRef<{
@@ -378,7 +382,13 @@ function BlockChip({
         dragRef.current = null;
         setActiveMode(null);
       }}
-      className="absolute left-16 right-2 rounded-xl px-3 py-2 flex flex-col gap-0.5 text-left overflow-hidden touch-none select-none shadow-sm"
+      className={`absolute left-16 right-2 rounded-xl flex flex-col text-left overflow-hidden touch-none select-none shadow-sm ${
+        tight
+          ? "px-2 py-0.5 justify-center gap-0"
+          : compact
+            ? "px-3 py-1 gap-0"
+            : "px-3 py-2 gap-0.5"
+      }`}
       style={{
         top: `${startMin * PX_PER_MIN}px`,
         height: `${height}px`,
@@ -386,30 +396,54 @@ function BlockChip({
         cursor,
       }}
     >
-      {/* Resize hint bars at top/bottom edges */}
-      <span
-        className="absolute left-0 right-0 top-0 h-3 flex items-center justify-center"
-        aria-hidden
-      >
-        <span className="w-8 h-0.5 rounded-full bg-[#0B1014]/30" />
-      </span>
-      <span
-        className="absolute left-0 right-0 bottom-0 h-3 flex items-center justify-center"
-        aria-hidden
-      >
-        <span className="w-8 h-0.5 rounded-full bg-[#0B1014]/30" />
-      </span>
+      {/* Resize hint bars — hidden on tight blocks so they don't eat text.
+          Resize still works (handled by offsetY in onPointerDown). */}
+      {!tight && (
+        <>
+          <span
+            className="absolute left-0 right-0 top-0 h-3 flex items-center justify-center"
+            aria-hidden
+          >
+            <span className="w-8 h-0.5 rounded-full bg-[#0B1014]/30" />
+          </span>
+          <span
+            className="absolute left-0 right-0 bottom-0 h-3 flex items-center justify-center"
+            aria-hidden
+          >
+            <span className="w-8 h-0.5 rounded-full bg-[#0B1014]/30" />
+          </span>
+        </>
+      )}
 
-      <div className="text-[11px] font-bold tabular-nums text-[#0B1014]/70 mt-2">
-        {formatTime(startMin)} — {formatTime(endMin)}
-      </div>
-      <div className="text-sm font-extrabold text-[#0B1014] leading-tight">
-        {meta.label}
-      </div>
-      {block.label && (
-        <div className="text-xs text-[#0B1014]/80 leading-tight truncate">
-          {block.label}
+      {tight ? (
+        <div className="text-[11px] font-bold text-[#0B1014] leading-none truncate">
+          {block.label || meta.label}
         </div>
+      ) : compact ? (
+        <>
+          <div className="text-[13px] font-extrabold text-[#0B1014] leading-tight truncate">
+            {block.label || meta.label}
+          </div>
+          {block.label && (
+            <div className="text-[10px] font-bold uppercase tracking-wide text-[#0B1014]/60 leading-none truncate">
+              {meta.label}
+            </div>
+          )}
+        </>
+      ) : (
+        <>
+          <div className="text-[11px] font-bold tabular-nums text-[#0B1014]/70 mt-2">
+            {formatTime(startMin)} — {formatTime(endMin)}
+          </div>
+          <div className="text-sm font-extrabold text-[#0B1014] leading-tight">
+            {meta.label}
+          </div>
+          {block.label && (
+            <div className="text-xs text-[#0B1014]/80 leading-tight truncate">
+              {block.label}
+            </div>
+          )}
+        </>
       )}
     </button>
   );
