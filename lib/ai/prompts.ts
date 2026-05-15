@@ -143,6 +143,77 @@ ${byDay}
 помни tone of voice: только строчные, живо, остро, без шаблонов.`;
 }
 
+export type RescheduleMoveItem = {
+  ref: number; // stable index — AI must return this back
+  category: string;
+  label: string | null;
+  durationMin: number;
+};
+
+export function buildReschedulePrompt(
+  toMove: RescheduleMoveItem[],
+  keep: ExistingBlockLite[],
+  profile: Profile | null,
+  ymd: string,
+  tz: string,
+  nowHHMM: string,
+  userText: string,
+): string {
+  const workStart = (profile?.work_hours_start ?? "09:00:00").slice(0, 5);
+  const workEnd = (profile?.work_hours_end ?? "18:00:00").slice(0, 5);
+  const tone = profile?.ai_tone ?? "gentle";
+
+  const keepText =
+    keep.length === 0
+      ? "(пусто)"
+      : keep
+          .map((e) => {
+            const cat =
+              CATEGORIES_BY_VALUE[e.category as Category]?.label ?? e.category;
+            return `${e.start}-${e.end} ${cat}${e.label ? ` — ${e.label}` : ""}`;
+          })
+          .join("\n");
+
+  const moveText = toMove
+    .map((m) => {
+      const cat = CATEGORIES_BY_VALUE[m.category as Category]?.label ?? m.category;
+      return `ref=${m.ref}: ${cat}${m.label ? ` — ${m.label}` : ""}, ${m.durationMin} мин`;
+    })
+    .join("\n");
+
+  return `${COACH_VOICE}
+
+---
+
+контекст: мой план на сегодня сломался. помоги перекинуть оставшееся на остаток дня. честно и реалистично.
+
+сегодня: ${ymd}
+часовой пояс: ${tz}
+сейчас: ${nowHHMM}
+рабочие часы: ${workStart}-${workEnd}
+тон: ${tone === "firm" ? "жесткий, прямой" : "мягкий, заботливый, но честный"}
+
+это уже прошло / трогать НЕЛЬЗЯ (обходи):
+${keepText}
+
+я говорю:
+${userText || "(без комментария)"}
+
+нужно перепланировать эти блоки (сохрани каждый, верни тот же ref):
+${moveText}
+
+правила:
+- начинай НЕ раньше ${nowHHMM} (то что прошло — уже не вернуть)
+- верни массив, по одному объекту на каждый ref выше, тот же ref
+- start, end: "HH:MM" 24h, локальное время
+- НЕ пересекайся с блоками которые трогать нельзя
+- focus (coded/work_other) максимум 50 мин подряд; между двумя focus минимум 15 мин не-focus
+- если на остаток дня всё не влезает честно — НЕ впихивай. лучше скажи в note что не помещается и расставь приоритетное. блок который не влез — верни с теми же ref но пометь "drop": true
+- учитывай мой adhd и энергию: не громозди тяжелое в конец
+
+формат — строго JSON по схеме. note (1-2 фразы, по делу) — что ты сделал и что пришлось вырезать. tone of voice: строчные, прямо.`;
+}
+
 export function buildReviewPrompt(
   profile: Profile | null,
   blocks: Block[],

@@ -18,7 +18,11 @@ import {
 } from "@/lib/time/tz";
 import { MIN_BLOCK_MIN, formatTime, timeStringToMin } from "@/lib/time/slots";
 import { generatePlan } from "@/lib/ai/planner";
-import type { ExistingBlockLite } from "@/lib/ai/prompts";
+import { generateReschedule } from "@/lib/ai/reschedule";
+import type {
+  ExistingBlockLite,
+  RescheduleMoveItem,
+} from "@/lib/ai/prompts";
 import { setReviewResponse, type ReviewResponse } from "@/lib/db/reviews";
 import {
   MAX_FOCUS_MIN,
@@ -397,6 +401,148 @@ export async function markReviewAction(formData: FormData): Promise<void> {
   }
 
   revalidatePath("/today");
+}
+
+export type RescheduleState = {
+  ok: boolean;
+  moved?: number;
+  dropped?: number;
+  note?: string | null;
+  error?: string;
+};
+
+export async function rescheduleAction(
+  _prev: RescheduleState | null,
+  formData: FormData,
+): Promise<RescheduleState> {
+  const userText = String(formData.get("text") ?? "").trim().slice(0, 1000);
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "not authenticated" };
+
+  const profile = await getProfile(supabase, user.id);
+  const tz = profileTimezone(profile);
+  const now = new Date();
+  const nowMs = now.getTime();
+  const ymd = getYMDInTZ(now, tz);
+  const nowHHMM = getHHMMInTZ(now, tz);
+
+  const blocks = await getBlocksForDate(supabase, user.id, now, tz);
+  const toMove = blocks
+    .filter((b) => new Date(b.end_at).getTime() > nowMs)
+    .sort(
+      (a, b) =>
+        new Date(a.start_at).getTime() - new Date(b.start_at).getTime(),
+    );
+  if (toMove.length === 0) {
+    return { ok: false, error: "нема що переносити — решта дня вільна" };
+  }
+
+  const keep = blocks.filter((b) => new Date(b.end_at).getTime() <= nowMs);
+  const keepLite: ExistingBlockLite[] = keep.map((b) => ({
+    start: getHHMMInTZ(new Date(b.start_at), tz),
+    end: getHHMMInTZ(new Date(b.end_at), tz),
+    category: b.category,
+    label: b.label,
+  }));
+
+  const moveItems: RescheduleMoveItem[] = toMove.map((b, i) => ({
+    ref: i,
+    category: b.category,
+    label: b.label,
+    durationMin: Math.round(
+      (new Date(b.end_at).getTime() - new Date(b.start_at).getTime()) / 60_000,
+    ),
+  }));
+
+  const result = await generateReschedule(
+    moveItems,
+    keepLite,
+    profile,
+    ymd,
+    tz,
+    nowHHMM,
+    userText,
+  );
+  if (!result) {
+    return { ok: false, error: "AI не зміг перепланувати, спробуй ще" };
+  }
+
+  // Occupied set for focus-rule checks: kept blocks + applied moves.
+  const occupied: FocusCheckBlock[] = keep.map((b) => ({
+    category: b.category,
+    startMs: new Date(b.start_at).getTime(),
+    endMs: new Date(b.end_at).getTime(),
+  }));
+
+  let moved = 0;
+  let dropped = 0;
+
+  // Apply in chronological order of proposed start.
+  const ordered = [...result.blocks].sort(
+    (a, b) => timeStringToMin(a.start) - timeStringToMin(b.start),
+  );
+
+  for (const r of ordered) {
+    const item = moveItems.find((m) => m.ref === r.ref);
+    if (!item) continue;
+    const original = toMove[r.ref];
+    if (!original) continue;
+    if (r.drop === true) {
+      dropped++;
+      continue;
+    }
+
+    const sMin = timeStringToMin(r.start);
+    const eMin = timeStringToMin(r.end);
+    if (eMin <= sMin) {
+      dropped++;
+      continue;
+    }
+
+    const startISO = localDateTimeToUTC(ymd, r.start, tz).toISOString();
+    const endISO = localDateTimeToUTC(ymd, r.end, tz).toISOString();
+    const candidate: FocusCheckBlock = {
+      category: original.category,
+      startMs: new Date(startISO).getTime(),
+      endMs: new Date(endISO).getTime(),
+    };
+
+    const check = validateFocusBlock(candidate, occupied);
+    if (!check.ok) {
+      dropped++;
+      continue;
+    }
+
+    try {
+      await updateBlock(supabase, original.id, {
+        start_at: startISO,
+        end_at: endISO,
+        notified_ending_at: null,
+        notified_started_at: null,
+      });
+      occupied.push(candidate);
+      moved++;
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      if (!msg.includes("time_blocks_no_overlap")) {
+        console.error(
+          JSON.stringify({
+            level: "error",
+            msg: "today.reschedule_apply_failed",
+            error: msg,
+          }),
+        );
+      }
+      dropped++;
+    }
+  }
+
+  revalidatePath("/today");
+  return { ok: true, moved, dropped, note: result.note ?? null };
 }
 
 export async function setBlockMoodAction(formData: FormData): Promise<void> {

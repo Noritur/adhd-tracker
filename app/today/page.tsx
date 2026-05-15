@@ -15,6 +15,7 @@ import {
 import { MorningPlanner } from "@/components/morning-planner";
 import { EveningReviewCard } from "@/components/evening-review-card";
 import { MoodCheckCard } from "@/components/mood-check-card";
+import { RescheduleButton } from "@/components/reschedule-button";
 
 const WEEKDAYS = [
   "неділя",
@@ -91,6 +92,7 @@ export default async function TodayPage() {
         <EveningReviewCard />
         <MoodCheckCard />
         <MorningPlanner />
+        <RescheduleButton />
         <SummaryTiles blocks={blocks} />
         <Suspense fallback={<InsightsCardSkeleton />}>
           <InsightsCard scope="today" />
