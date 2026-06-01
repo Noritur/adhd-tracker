@@ -6,6 +6,7 @@ import {
   createBlock,
   updateBlock,
   deleteBlock,
+  deleteFutureBlocks,
   getBlocksForDate,
   type Mood,
 } from "@/lib/db/blocks";
@@ -571,6 +572,163 @@ export async function setBlockMoodAction(formData: FormData): Promise<void> {
   }
 
   revalidatePath("/today");
+}
+
+export type RebuildDayState = {
+  ok: boolean;
+  deleted?: number;
+  created?: number;
+  skipped?: number;
+  note?: string | null;
+  error?: string;
+};
+
+/**
+ * "Rebuild day" — delete every block ending after now, then generate a
+ * brand-new plan from scratch using only the past (completed) blocks as
+ * context.  This is the "forget the plan, start over" escape hatch.
+ */
+export async function rebuildDayAction(
+  _prev: RebuildDayState | null,
+  formData: FormData,
+): Promise<RebuildDayState> {
+  const userText = String(formData.get("text") ?? "").trim();
+  if (!userText) return { ok: false, error: "напиши що хочеш на залишок дня" };
+  if (userText.length > 2000) {
+    return { ok: false, error: "коротше будь ласка (макс 2000 символів)" };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "not authenticated" };
+
+  const profile = await getProfile(supabase, user.id);
+  const tz = profileTimezone(profile);
+  const now = new Date();
+  const nowISO = now.toISOString();
+  const ymd = getYMDInTZ(now, tz);
+
+  // 1. Delete all future blocks (end_at > now).
+  let deleted = 0;
+  try {
+    deleted = await deleteFutureBlocks(supabase, user.id, nowISO);
+  } catch (e) {
+    console.error(
+      JSON.stringify({
+        level: "error",
+        msg: "today.rebuild_delete_failed",
+        error: e instanceof Error ? e.message : String(e),
+      }),
+    );
+    return { ok: false, error: "не зміг очистити майбутні блоки" };
+  }
+
+  // 2. Fetch remaining (past) blocks — these become the "existing" context.
+  const pastBlocks = await getBlocksForDate(supabase, user.id, now, tz);
+  const existingLite: ExistingBlockLite[] = pastBlocks.map((b) => ({
+    start: getHHMMInTZ(new Date(b.start_at), tz),
+    end: getHHMMInTZ(new Date(b.end_at), tz),
+    category: b.category,
+    label: b.label,
+  }));
+
+  // 3. Generate a fresh plan from now.
+  const plan = await generatePlan(userText, profile, existingLite, ymd, tz);
+  if (!plan) {
+    return {
+      ok: true,
+      deleted,
+      created: 0,
+      skipped: 0,
+      note: "очистив старий план, але AI не зміг побудувати новий — спробуй ще",
+    };
+  }
+
+  // 4. Insert new blocks (same logic as generatePlanAction).
+  const busy: { start: number; end: number; category: Category }[] =
+    pastBlocks.map((b) => ({
+      start: timeStringToMin(getHHMMInTZ(new Date(b.start_at), tz)),
+      end: timeStringToMin(getHHMMInTZ(new Date(b.end_at), tz)),
+      category: b.category,
+    }));
+
+  let created = 0;
+  let skipped = 0;
+
+  const sorted = [...plan.blocks].sort(
+    (a, b) => timeStringToMin(a.start) - timeStringToMin(b.start),
+  );
+
+  for (const blk of sorted) {
+    const aiStart = timeStringToMin(blk.start);
+    const aiEnd = timeStringToMin(blk.end);
+    if (aiEnd <= aiStart) {
+      skipped++;
+      continue;
+    }
+
+    const slot = findLargestFreeSlot(aiStart, aiEnd, busy, MIN_BLOCK_MIN);
+    if (!slot) {
+      skipped++;
+      continue;
+    }
+
+    const cat = blk.category as Category;
+    let sMin = slot.start;
+    let eMin = slot.end;
+
+    if (isFocus(cat) && eMin - sMin > MAX_FOCUS_MIN) {
+      eMin = sMin + MAX_FOCUS_MIN;
+    }
+
+    if (isFocus(cat)) {
+      const tooTight = busy.some((b) => {
+        if (!isFocus(b.category)) return false;
+        const overlaps = sMin < b.end && b.start < eMin;
+        if (overlaps) return false;
+        const gap = eMin <= b.start ? b.start - eMin : sMin - b.end;
+        return gap < 15;
+      });
+      if (tooTight) {
+        skipped++;
+        continue;
+      }
+    }
+
+    const startISO = localDateTimeToUTC(ymd, formatTime(sMin), tz).toISOString();
+    const endISO = localDateTimeToUTC(ymd, formatTime(eMin), tz).toISOString();
+
+    try {
+      await createBlock(supabase, {
+        user_id: user.id,
+        start_at: startISO,
+        end_at: endISO,
+        category: cat,
+        label: blk.label,
+      });
+      busy.push({ start: sMin, end: eMin, category: cat });
+      created++;
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      if (msg.includes("time_blocks_no_overlap")) {
+        skipped++;
+      } else {
+        console.error(
+          JSON.stringify({
+            level: "error",
+            msg: "today.rebuild_insert_failed",
+            error: msg,
+          }),
+        );
+        skipped++;
+      }
+    }
+  }
+
+  revalidatePath("/today");
+  return { ok: true, deleted, created, skipped, note: plan.note ?? null };
 }
 
 export async function deleteBlockAction(formData: FormData): Promise<void> {

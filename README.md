@@ -1,36 +1,261 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# adhd-tracker
 
-## Getting Started
+AI-коуч для людей з ADHD-патерном, який живе у таймлайні твого дня.
 
-First, run the development server:
+**Production:** https://adhd-tracker-nine.vercel.app
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+---
+
+## Проблема
+
+Існуючі трекери часу (Toggl, Clockify, Pomodoro-таймери) побудовані для нейротипічних людей: "запусти таймер, зупини таймер". Для ADHD-мозку це не працює:
+
+- **Time-blindness** -- відчуття часу порушене, 50-хвилинна focus-сесія суб'єктивно = 15 хвилин
+- **Decision paralysis** -- ранок починається з "що робити?" і закінчується скролінгом
+- **Hyperfocus trap** -- 3 години без перерви, потім повний crash
+- **Plan collapse** -- план зламався о 14:00, весь день здається втраченим
+
+Потрібен не таймер, а AI-партнер, який бачить патерни, нагадує вчасно і допомагає реструктурувати день коли все пішло не за планом.
+
+## Що робить
+
+Веб-додаток з вертикальним таймлайном дня (drag-and-drop, 1px = 1 хвилина) і п'ятьма AI-точками взаємодії:
+
+**Timeline CRUD** -- tap створює блок, drag-to-move і drag-to-resize з 15-хв snap. Overlap protection на рівні DB (exclusion constraint) і клієнта. 8 категорій з кольоровою палітрою.
+
+**Morning planner** -- "що сьогодні треба?" -> AI розкладає блоки по таймлайну, обходить існуючі, враховує робочі години і anti-burnout правила. Блоки створюються одразу, не як "рекомендації".
+
+**Inline insights** -- AI-коуч аналізує залоговане (today або week scope) і дає observation + recommendation. Cache 2 години. Не FAQ-відповіді -- конкретні патерни з твоїх даних.
+
+**Adaptive reschedule** -- натискаєш "план зламався", AI бере всі блоки після поточного часу, перепаковує на залишок дня з коментарем що не влізло. keep/toMove split, focus-правила re-validated server-side.
+
+**Proactive coaching push** -- кожну хвилину cron перевіряє блоки: якщо два "болото" підряд або два focus без перерви, AI генерує one-liner пінок і надсилає Web Push на телефон. Cooldown 1/день.
+
+**Evening review** -- Vercel Cron о 19:00 UTC, AI пише summary дня + рекомендацію на завтра, шле push-нотифікацію з прев'ю.
+
+**Mood 1-tap** -- блоки без оцінки з'являються як картка, 3 кнопки (fire / ok / swamp). Mood feed-иться в AI prompts як `[энергия: ...]`.
+
+**/week heatmap** -- 7 днів x 6 4-годинних слотів, домінантна категорія per cell з opacity = totalMinutes/240. Summary tiles зверху.
+
+**Anti-burnout rules** -- focus (coded/work_other) hard-cap 50 хвилин, мінімум 15 хвилин non-focus gap між focus-блоками. Enforced скрізь: manual create, drag, planner, reschedule.
+
+**PWA + Web Push** -- installable на homescreen, VAPID push нотифікації, service worker. Іконка "р" amber на dark.
+
+---
+
+## AI-архітектура
+
+### Master-prompt persona
+
+Всі 5 AI-точок ділять один голос коуча -- `lib/ai/master-prompt.ts`. Це не system prompt-шаблон, а авторська персона: lowercase, без формальностей, прямий зворотний зв'язок, "будь реален" замість corporate advice. Зміна тону (firm/gentle) в `/settings` впливає на інструкцію тону, але голос залишається тим самим.
+
+Кожен use-case (`lib/ai/prompts.ts`) компонує промпт як:
+
+```
+COACH_VOICE (persona)
+---
+context (today blocks, mood, category totals, timeline)
+---
+task-specific instructions + output schema description
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### Model fallback chain
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```
+gemini-2.5-flash  ->  gemini-2.5-flash-lite  ->  gemini-2.0-flash
+   primary              fallback on 503           last resort
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Три моделі по низхідній якості. Кожен AI-модуль (`insights.ts`, `reschedule.ts`, `coach-nudge.ts`, `review.ts`, `planner.ts`) ітерує ланцюжок, ловить помилки, логує у structured JSON. Якщо все три fail -- graceful null, UI показує fallback стан.
 
-## Learn More
+### Structured output
 
-To learn more about Next.js, take a look at the following resources:
+AI SDK `generateObject` з zod-схемами для типобезпечного парсингу:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+| Touchpoint | Output schema | SDK method |
+|---|---|---|
+| Insights | `{ observation, recommendation }` | `generateObject` |
+| Morning planner | `{ blocks: [{ start, end, category, label }], note }` | `generateObject` |
+| Evening review | `{ summary, recommendation }` | `generateObject` |
+| Adaptive reschedule | `{ blocks: [{ ref, start, end, drop }], note }` | `generateObject` |
+| Proactive nudge | plain text (one-liner) | `generateText` |
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+### Proactive coaching loop
 
-## Deploy on Vercel
+```
+cron-job.org (every 1 min)
+    |
+    POST /api/block-tick  (Bearer auth)
+    |
+    +-- query: blocks starting now (<=2 min window)
+    |       -> send "block started" push
+    |
+    +-- query: blocks ending in ~5 min
+    |       -> send "ending soon" push
+    |
+    +-- query: last 2 completed blocks
+            -> swamp_streak? (2x mood=swamp)
+            -> focus_no_break? (2x focus, <15min gap)
+                -> AI generateText -> one-liner nudge -> Web Push
+                -> set profiles.last_proactive_at (cooldown 1/day)
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Vercel Hobby plan = daily cron only. Для хвилинної гранулярності використовується cron-job.org (free tier, external HTTP POST). Це звичайний function invocation, не Vercel Cron -- Hobby-ліміт не зачіпається. Trade-off: залежність від зовнішнього сервісу, free tier призупиняє job при non-2xx.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+### Cache strategy
+
+Insights cache в `adhd_tracker.insights_cache` з 2-годинним TTL. Cache key: `(user_id, scope, for_date)`. На stale -- AI generation -> INSERT (delete-then-insert для idempotency через unique constraint).
+
+---
+
+## Stack
+
+| Layer | Technology |
+|---|---|
+| Framework | Next.js 16.2.6 (App Router, React 19) |
+| Styling | Tailwind CSS 4 + shadcn/ui (Radix) |
+| Database | Supabase Postgres, custom schema `adhd_tracker`, RLS |
+| Auth | Supabase Auth (magic link + password), custom SMTP (Resend) |
+| AI | Vercel AI SDK 6 + `@ai-sdk/google` (direct Gemini, not Gateway) |
+| Push | Web Push API + `web-push` (VAPID), service worker |
+| Hosting | Vercel (Fluid Compute) |
+| Cron | Vercel Cron (daily review + morning nudge), cron-job.org (minute-level block-tick) |
+| Language | TypeScript, pnpm |
+
+### Чому не...
+
+**...AI Gateway?** Direct Gemini = менше latency, free tier 60 RPM / 1500 req/day вистачає для self-use. Gateway додає hop. Swap на Gateway -- одна зміна в import.
+
+**...react-big-calendar / FullCalendar?** Бібліотеки -- overkill для single-day vertical timeline. Custom component з pointer events дає повний контроль над touch UX (ADHD-critical: мінімум кроків для дії).
+
+**...Tremor для heatmap?** Спробували -- data shape не підходить для category-dominant heatmap. Custom component, 50 рядків.
+
+---
+
+## Структура проєкту
+
+```
+app/
+  today/           -- timeline view + morning planner + mood check
+  week/            -- weekly heatmap + summary tiles
+  settings/        -- profile, work hours, AI tone, push toggle
+  api/
+    insights/      -- GET, cached AI insights (today|week scope)
+    review/        -- Vercel Cron, evening review for all users
+    morning-nudge/ -- Vercel Cron, morning push
+    block-tick/    -- external cron, minute-level reminders + coaching
+
+lib/
+  ai/
+    master-prompt  -- coach persona (shared across all AI calls)
+    prompts        -- prompt builders (insight, plan, review, reschedule)
+    insights       -- generateObject + fallback chain
+    planner        -- morning plan generation
+    review         -- evening review generation
+    reschedule     -- adaptive reschedule
+    coach-nudge    -- proactive one-liner generation
+    cache          -- insights cache (2h TTL)
+  rules/
+    focus-limits   -- 50min cap + 15min gap validation
+  db/
+    blocks         -- time_blocks CRUD
+    profile        -- user profile (TZ, work hours, AI tone)
+    reviews        -- evening review storage
+    push-subs      -- Web Push subscriptions
+  push/
+    send           -- VAPID push delivery
+  time/
+    tz             -- per-user timezone helpers
+    slots          -- 15-min snap math, formatting
+  supabase/
+    client / server / admin / middleware
+```
+
+## Data model
+
+5 таблиць у schema `adhd_tracker`:
+
+- **profiles** -- timezone, work_hours, ai_tone (firm/gentle), evening_review config, last_proactive_at
+- **time_blocks** -- user_id, start_at, end_at, category, label, mood (fire/ok/swamp), notify flags. Exclusion constraint через `btree_gist` для overlap protection.
+- **insights_cache** -- per-user per-scope per-date, 2h TTL
+- **reviews** -- evening review summary + recommendation, user_response (ok/skip/not_today)
+- **push_subscriptions** -- Web Push endpoints, unique on endpoint
+
+RLS на всіх таблицях: `auth.uid() = user_id`. Service-role client для cron routes.
+
+---
+
+## Design decisions для ADHD
+
+**1px = 1 хвилина.** Фізичний розмір блока = тривалість. Time-blind мозок "бачить" час через простір.
+
+**Tap-to-create, не форма.** Тапнув на порожній слот -> одразу sheet з категорією. Мінімум кроків до дії.
+
+**Focus cap 50 хвилин.** Не Pomodoro (25 -- занадто мало для deep work з ADHD). 50 хвилин -- compromise між hyperfocus trap і продуктивністю. Enforced скрізь, не optional.
+
+**"План зламався" замість "видали все і почни заново".** Reschedule зберігає id/mood/label кожного блока, AI тільки перерозподіляє час. Нічого не втрачається.
+
+**Mood -- 3 опції, не шкала.** Fire / ok / swamp. Для ADHD шкала 1-10 = decision paralysis. Три кнопки = 0.5 сек.
+
+**Coach, не assistant.** AI не питає "чим можу допомогти?". Він дивиться на дані і каже що бачить. Proactive, не reactive.
+
+---
+
+## Розгортання локально
+
+```bash
+git clone https://github.com/Noritur/adhd-tracker.git
+cd adhd-tracker
+pnpm install
+
+# .env.local (see .env.example)
+# NEXT_PUBLIC_SUPABASE_URL=...
+# NEXT_PUBLIC_SUPABASE_ANON_KEY=...
+# SUPABASE_SERVICE_ROLE_KEY=...
+# GOOGLE_GENERATIVE_AI_API_KEY=...
+# CRON_SECRET=...
+# VAPID_PUBLIC_KEY=...
+# VAPID_PRIVATE_KEY=...
+# VAPID_SUBJECT=mailto:...
+
+pnpm dev
+```
+
+Supabase: потрібен проєкт з exposed schema `adhd_tracker`, custom SMTP для magic link (Supabase default = 4 emails/hour).
+
+---
+
+## Свідомі trade-offs
+
+| Що | Чому | Альтернатива |
+|---|---|---|
+| Direct Gemini, not Gateway | Free tier, менше latency, швидше ship | AI Gateway (one import change) |
+| cron-job.org для block-tick | Vercel Hobby = daily cron only. Потрібна хвилинна гранулярність | Vercel Pro ($20/mo) або self-hosted cron |
+| Custom SMTP (Resend) | Supabase default SMTP = 4 emails/hour project-wide | Supabase Pro plan |
+| Mobile-only dark UI | 80% використання з телефону, ADHD = менше вибору = менше friction | Responsive + light theme |
+| Coach voice hardcoded (RU) | Self-dogfooding product, один користувач | i18n, per-user voice config |
+
+---
+
+## Roadmap
+
+- [ ] Telegram bot як notification channel (reuse python-telegram-bot з попереднього проєкту)
+- [ ] ActivityWatch integration для автоматичного логування screen time
+- [ ] GCal import (блоки з календаря як read-only overlay)
+- [ ] Demo account з seed data (recruiter заходить -> не порожньо)
+- [ ] Light theme + responsive desktop layout
+- [ ] Voice logging через Whisper
+
+---
+
+## Stats
+
+- 9 днів розробки (~2-3 год/день)
+- 65 source files, 23 commits
+- 5 AI touchpoints, 3-model fallback chain
+- 16 задокументованих blockers (Next.js 16, Supabase custom schema, PWA auth, npm bugs)
+- Повністю self-dogfooded: проєкт будувався для власного ADHD-патерну
+
+---
+
+Built by [@mahtalaran](https://github.com/Noritur)

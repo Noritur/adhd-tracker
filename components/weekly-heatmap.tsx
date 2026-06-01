@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { CATEGORIES_BY_VALUE, type Category } from "@/lib/categories";
 import type { Block } from "@/lib/db/blocks";
 import { getYMDInTZ, localDateTimeToUTC } from "@/lib/time/tz";
@@ -77,15 +78,16 @@ export function WeeklyHeatmap({
         <span className="text-xs text-muted-foreground tabular-nums">7×6</span>
       </div>
 
-      {/* Day labels row */}
+      {/* Day labels row — each links to /day/YYYY-MM-DD */}
       <div className="grid grid-cols-7 gap-1.5">
         {dayYMDs.map((ymd, i) => (
-          <div
+          <Link
             key={ymd}
-            className="text-center text-[10px] font-bold uppercase tracking-wider text-muted-foreground"
+            href={`/day/${ymd}`}
+            className="text-center text-[10px] font-bold uppercase tracking-wider text-muted-foreground hover:text-primary transition-colors"
           >
             {WEEKDAYS_SHORT[i]}
-          </div>
+          </Link>
         ))}
       </div>
 

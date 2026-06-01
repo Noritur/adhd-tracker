@@ -3,9 +3,15 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getBlocksForDate } from "@/lib/db/blocks";
 import { insertReview } from "@/lib/db/reviews";
 import { generateReview } from "@/lib/ai/review";
-import { getHHMMInTZ, getYMDInTZ } from "@/lib/time/tz";
+import {
+  getHHMMInTZ,
+  getYMDInTZ,
+  getWeekdayInTZ,
+  localMondayMidnightUTC,
+} from "@/lib/time/tz";
 import { timeStringToMin } from "@/lib/time/slots";
 import { sendToUser } from "@/lib/push/send";
+import { getWeekWord } from "@/lib/db/week-words";
 import type { Profile } from "@/lib/db/profile";
 
 export const dynamic = "force-dynamic";
@@ -124,10 +130,52 @@ async function handler(request: Request): Promise<Response> {
     }
   }
 
+  // Friday word-of-the-week push: if today is Friday in user's TZ and
+  // they haven't set a word for this week yet, nudge them.
+  let wordPushes = 0;
+  for (const p of (profiles ?? []) as Profile[]) {
+    const tz = p.timezone;
+    const weekday = getWeekdayInTZ(now, tz); // 0=Sun..6=Sat
+    if (weekday !== 5) continue; // only Friday
+
+    // Check time window (same as review: within WINDOW_MIN of review time).
+    const localHHMM = getHHMMInTZ(now, tz);
+    const targetHHMM = (p.evening_review_at ?? "21:00:00").slice(0, 5);
+    const cur = timeStringToMin(localHHMM);
+    const target = timeStringToMin(targetHHMM);
+    const rawDiff = Math.abs(cur - target);
+    const diff = Math.min(rawDiff, 1440 - rawDiff);
+    if (diff > WINDOW_MIN) continue;
+
+    const mondayUTC = localMondayMidnightUTC(now, tz);
+    const mondayYMD = getYMDInTZ(mondayUTC, tz);
+    const existing = await getWeekWord(admin, p.id, mondayYMD);
+    if (existing) continue;
+
+    try {
+      await sendToUser(p.id, {
+        title: "слово тижня",
+        body: "одне слово або фраза — якорь. шо це був за тиждень?",
+        url: "/week",
+        tag: `week-word-${mondayYMD}`,
+      });
+      wordPushes++;
+    } catch (e) {
+      console.error(
+        JSON.stringify({
+          level: "warn",
+          msg: "cron.review.word_push_failed",
+          user: p.id,
+          error: e instanceof Error ? e.message : String(e),
+        }),
+      );
+    }
+  }
+
   console.log(
-    JSON.stringify({ level: "info", msg: "cron.review.done", stats }),
+    JSON.stringify({ level: "info", msg: "cron.review.done", stats, wordPushes }),
   );
-  return NextResponse.json({ ok: true, stats });
+  return NextResponse.json({ ok: true, stats, wordPushes });
 }
 
 export async function POST(request: Request) {

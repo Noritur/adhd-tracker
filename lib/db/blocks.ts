@@ -150,3 +150,23 @@ export async function deleteBlock(
   const { error } = await client.from("time_blocks").delete().eq("id", id);
   if (error) throw error;
 }
+
+/**
+ * Delete all blocks for a user where end_at > cutoff.
+ * Used by rebuild-day: wipe future blocks, keep past ones.
+ * Returns count of deleted rows.
+ */
+export async function deleteFutureBlocks(
+  client: DbClient,
+  userId: string,
+  cutoffISO: string,
+): Promise<number> {
+  const { data, error } = await client
+    .from("time_blocks")
+    .delete()
+    .eq("user_id", userId)
+    .gt("end_at", cutoffISO)
+    .select("id");
+  if (error) throw error;
+  return data?.length ?? 0;
+}
