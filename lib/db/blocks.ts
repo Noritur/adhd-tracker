@@ -152,20 +152,30 @@ export async function deleteBlock(
 }
 
 /**
- * Delete all blocks for a user where end_at > cutoff.
- * Used by rebuild-day: wipe future blocks, keep past ones.
+ * Delete blocks for a user that start AFTER `startCutoffISO` and BEFORE
+ * `dayEndISO`. Bounded to a single local day so "rebuild today" cannot
+ * wipe blocks scheduled for tomorrow / next week.
+ *
+ * Semantics:
+ * - `start_at > startCutoffISO` — strictly future. Preserves the currently
+ *   active block (start_at <= now < end_at).
+ * - `start_at < dayEndISO` — limits scope to today's local-day window,
+ *   computed by caller via localDayBoundsUTC(now, tz).
+ *
  * Returns count of deleted rows.
  */
-export async function deleteFutureBlocks(
+export async function deleteFutureBlocksInDay(
   client: DbClient,
   userId: string,
-  cutoffISO: string,
+  startCutoffISO: string,
+  dayEndISO: string,
 ): Promise<number> {
   const { data, error } = await client
     .from("time_blocks")
     .delete()
     .eq("user_id", userId)
-    .gt("end_at", cutoffISO)
+    .gt("start_at", startCutoffISO)
+    .lt("start_at", dayEndISO)
     .select("id");
   if (error) throw error;
   return data?.length ?? 0;

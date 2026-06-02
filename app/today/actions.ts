@@ -6,7 +6,7 @@ import {
   createBlock,
   updateBlock,
   deleteBlock,
-  deleteFutureBlocks,
+  deleteFutureBlocksInDay,
   getBlocksForDate,
   type Mood,
 } from "@/lib/db/blocks";
@@ -17,6 +17,7 @@ import {
   getYMDInTZ,
   getWeekdayInTZ,
   localDateTimeToUTC,
+  localDayBoundsUTC,
 } from "@/lib/time/tz";
 import { formatTime, timeStringToMin } from "@/lib/time/slots";
 import { generatePlan } from "@/lib/ai/planner";
@@ -516,14 +517,16 @@ export async function rebuildDayAction(
   const ymd = getYMDInTZ(now, tz);
   const weekday = getWeekdayInTZ(now, tz);
 
-  // 1. Fetch all today's blocks; partition into past vs future at `now`.
-  // Past blocks become the "existing" context for AI. Future blocks are
-  // candidates for deletion — but only AFTER AI succeeds.
+  // 1. Fetch all today's blocks; partition by start_at vs now.
+  //   - "stays" = past + currently active (start_at <= now). AI plans
+  //     around these and they survive deletion.
+  //   - "future" = strictly after now (start_at > now). These get deleted
+  //     once AI succeeds, but ONLY within today's local-day window.
   const allBlocks = await getBlocksForDate(supabase, user.id, now, tz);
-  const pastBlocks = allBlocks.filter(
-    (b) => new Date(b.end_at).getTime() <= nowMs,
+  const staysBlocks = allBlocks.filter(
+    (b) => new Date(b.start_at).getTime() <= nowMs,
   );
-  const existingLite: ExistingBlockLite[] = pastBlocks.map((b) => ({
+  const existingLite: ExistingBlockLite[] = staysBlocks.map((b) => ({
     start: getHHMMInTZ(new Date(b.start_at), tz),
     end: getHHMMInTZ(new Date(b.end_at), tz),
     category: b.category,
@@ -547,10 +550,17 @@ export async function rebuildDayAction(
     };
   }
 
-  // 3. AI succeeded — now safe to clear future blocks.
+  // 3. AI succeeded — now safe to clear blocks. Bound by today's local
+  //    day end so future days (planned ahead, archive) are untouched.
   let deleted = 0;
   try {
-    deleted = await deleteFutureBlocks(supabase, user.id, nowISO);
+    const { end: dayEnd } = localDayBoundsUTC(now, tz);
+    deleted = await deleteFutureBlocksInDay(
+      supabase,
+      user.id,
+      nowISO,
+      dayEnd.toISOString(),
+    );
   } catch (e) {
     console.error(
       JSON.stringify({
@@ -568,7 +578,7 @@ export async function rebuildDayAction(
     userId: user.id,
     ymd,
     tz,
-    seedBlocks: pastBlocks,
+    seedBlocks: staysBlocks,
     plan,
     logKey: "today.rebuild",
   });

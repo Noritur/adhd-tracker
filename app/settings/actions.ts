@@ -10,6 +10,22 @@ function isValidHHMM(s: string): boolean {
   return /^\d{2}:\d{2}$/.test(s);
 }
 
+/**
+ * Validate IANA timezone via Intl. Saving an unknown TZ here would brick
+ * every server route and cron that calls Intl.DateTimeFormat(...) — and
+ * the user (still authenticated) would get a self-DoS with no UI to fix
+ * it. Cheap server-side guard against direct form posts that bypass the
+ * <select> in the UI.
+ */
+function isValidTimezone(tz: string): boolean {
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: tz }).format(new Date());
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export async function updateProfileAction(
   _prev: UpdateProfileState | null,
   formData: FormData,
@@ -32,6 +48,9 @@ export async function updateProfileAction(
   const restDaysRaw = String(formData.get("rest_days") ?? "").trim();
 
   if (!timezone) return { ok: false, error: "вкажи часовий пояс" };
+  if (!isValidTimezone(timezone)) {
+    return { ok: false, error: "невідомий часовий пояс" };
+  }
   if (!isValidHHMM(work_hours_start) || !isValidHHMM(work_hours_end)) {
     return { ok: false, error: "робочі години у форматі HH:MM" };
   }
