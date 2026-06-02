@@ -4,6 +4,7 @@ import { getBlocksForDate, getBlocksForRange } from "@/lib/db/blocks";
 import { getProfile, profileTimezone } from "@/lib/db/profile";
 import {
   getYMDInTZ,
+  getWeekdayInTZ,
   localDayBoundsUTC,
 } from "@/lib/time/tz";
 import { generateInsight } from "@/lib/ai/insights";
@@ -37,7 +38,11 @@ export async function InsightsCard({ scope }: { scope: InsightScope }) {
         const start = new Date(end.getTime() - 7 * 24 * 60 * 60 * 1000);
         blocks = await getBlocksForRange(supabase, user.id, start, end);
       }
-      return generateInsight(scope, blocks);
+      // Rest-day awareness only makes sense for "today" scope (single
+      // weekday). "week" spans both rest + work days, leave null so the
+      // prompt skips the rest-day block instead of misapplying it.
+      const weekday = scope === "today" ? getWeekdayInTZ(now, tz) : null;
+      return generateInsight(scope, blocks, profile, weekday);
     },
   );
 
@@ -58,7 +63,7 @@ export async function InsightsCard({ scope }: { scope: InsightScope }) {
         </p>
         <p className="text-sm text-[var(--text-secondary)] leading-snug whitespace-pre-wrap pt-1 border-t border-border/40">
           <span className="text-[10px] uppercase tracking-wider font-bold text-muted-foreground block mb-1">
-            что делать
+            що робити
           </span>
           {insight.recommendation}
         </p>
