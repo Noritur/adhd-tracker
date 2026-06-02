@@ -509,20 +509,28 @@ export async function rescheduleAction(
     }
 
     const sMin = timeStringToMin(r.start);
-    const eMin = timeStringToMin(r.end);
+    let eMin = timeStringToMin(r.end);
     if (eMin <= sMin) {
       dropped++;
       continue;
     }
 
+    // Trim focus blocks longer than MAX_FOCUS_MIN — parity with planner.
+    // AI sometimes returns 55–60min focus despite the prompt rule; previously
+    // we dropped the whole block, losing the user's work. Trim instead.
+    if (isFocus(original.category) && eMin - sMin > MAX_FOCUS_MIN) {
+      eMin = sMin + MAX_FOCUS_MIN;
+    }
+
     const startISO = localDateTimeToUTC(ymd, r.start, tz).toISOString();
-    const endISO = localDateTimeToUTC(ymd, r.end, tz).toISOString();
+    const endISO = localDateTimeToUTC(ymd, formatTime(eMin), tz).toISOString();
     const candidate: FocusCheckBlock = {
       category: original.category,
       startMs: new Date(startISO).getTime(),
       endMs: new Date(endISO).getTime(),
     };
 
+    // Gap violation can't be fixed locally — still drop.
     const check = validateFocusBlock(candidate, occupied);
     if (!check.ok) {
       dropped++;
