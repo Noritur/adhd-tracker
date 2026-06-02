@@ -29,6 +29,7 @@ export async function updateProfileAction(
   ).trim();
   const evening_review_enabled =
     String(formData.get("evening_review_enabled") ?? "0") === "1";
+  const restDaysRaw = String(formData.get("rest_days") ?? "").trim();
 
   if (!timezone) return { ok: false, error: "вкажи часовий пояс" };
   if (!isValidHHMM(work_hours_start) || !isValidHHMM(work_hours_end)) {
@@ -42,6 +43,14 @@ export async function updateProfileAction(
   }
   const ai_tone: AiTone = toneRaw;
 
+  // Parse rest_days: "0,6" → [0, 6]. Filter to valid weekday indices.
+  const rest_days = restDaysRaw
+    ? restDaysRaw
+        .split(",")
+        .map((s) => Number(s.trim()))
+        .filter((n) => Number.isInteger(n) && n >= 0 && n <= 6)
+    : [];
+
   const patch: ProfilePatch = {
     timezone,
     work_hours_start: `${work_hours_start}:00`,
@@ -49,6 +58,7 @@ export async function updateProfileAction(
     ai_tone,
     evening_review_at: `${evening_review_at}:00`,
     evening_review_enabled,
+    rest_days,
   };
 
   try {

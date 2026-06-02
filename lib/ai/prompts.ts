@@ -1,5 +1,5 @@
 import type { Block } from "@/lib/db/blocks";
-import type { Profile } from "@/lib/db/profile";
+import { isRestWeekday, type Profile } from "@/lib/db/profile";
 import { CATEGORIES, CATEGORIES_BY_VALUE, type Category } from "@/lib/categories";
 import {
   formatDuration,
@@ -7,6 +7,35 @@ import {
   formatTime,
 } from "@/lib/time/slots";
 import { COACH_VOICE } from "./master-prompt";
+
+const WEEKDAY_NAMES_RU = [
+  "воскресенье",
+  "понедельник",
+  "вторник",
+  "среда",
+  "четверг",
+  "пятница",
+  "суббота",
+];
+
+/**
+ * Returns prompt block describing rest-day context.
+ * Empty string on workdays — no noise in the prompt.
+ */
+function restDayContext(profile: Profile | null, weekday: number): string {
+  const isRest = isRestWeekday(profile, weekday);
+  const dayName = WEEKDAY_NAMES_RU[weekday];
+  if (!isRest) {
+    return `день недели: ${dayName} (рабочий день для меня).`;
+  }
+  return `день недели: ${dayName} — это МОЙ ВЫХОДНОЙ.
+важно: на выходных я не должен быть продуктивным. отсутствие фокус-блоков — это норма, а не провал.
+- НЕ ругай за "пустой день" или отсутствие работы.
+- НЕ толкай к фокус-сессиям если я сам не просил.
+- отдых, прогулки, social, движение, побут — это и есть смысл выходного.
+- если я говорю что хочу что-то поделать — окей, но в lighter режиме: меньше structure, больше "не упустить кайф".
+- review/insights на выходном: фокус на восстановлении, а не на счётчике сделанного.`;
+}
 
 export type InsightScope = "today" | "week";
 
@@ -94,16 +123,19 @@ function summarizeByDay(blocks: Block[]): string {
 export function buildInsightPrompt(
   scope: InsightScope,
   blocks: Block[],
+  profile: Profile | null = null,
+  weekday: number | null = null,
 ): string {
   if (scope === "today") {
     const summary = summarizeByCategory(blocks);
     const timeline = summarizeTimeline(blocks);
+    const rest = weekday !== null ? restDayContext(profile, weekday) : "";
     return `${COACH_VOICE}
 
 ---
 
 контекст: смотри на мой сегодняшний день в трекере.
-
+${rest ? `\n${rest}\n` : ""}
 общие итоги по категориям:
 ${summary}
 
@@ -158,10 +190,12 @@ export function buildReschedulePrompt(
   tz: string,
   nowHHMM: string,
   userText: string,
+  weekday: number | null = null,
 ): string {
   const workStart = (profile?.work_hours_start ?? "09:00:00").slice(0, 5);
   const workEnd = (profile?.work_hours_end ?? "18:00:00").slice(0, 5);
   const tone = profile?.ai_tone ?? "gentle";
+  const rest = weekday !== null ? restDayContext(profile, weekday) : "";
 
   const keepText =
     keep.length === 0
@@ -192,6 +226,7 @@ export function buildReschedulePrompt(
 сейчас: ${nowHHMM}
 рабочие часы: ${workStart}-${workEnd}
 тон: ${tone === "firm" ? "жесткий, прямой" : "мягкий, заботливый, но честный"}
+${rest ? `\n${rest}\n` : ""}
 
 это уже прошло / трогать НЕЛЬЗЯ (обходи):
 ${keepText}
@@ -217,10 +252,12 @@ ${moveText}
 export function buildReviewPrompt(
   profile: Profile | null,
   blocks: Block[],
+  weekday: number | null = null,
 ): string {
   const tone = profile?.ai_tone ?? "gentle";
   const summary = summarizeByCategory(blocks);
   const timeline = summarizeTimeline(blocks);
+  const rest = weekday !== null ? restDayContext(profile, weekday) : "";
 
   return `${COACH_VOICE}
 
@@ -229,7 +266,7 @@ export function buildReviewPrompt(
 контекст: день закончился. это вечернее ревью. посмотри как прошел мой день в трекере.
 
 тон: ${tone === "firm" ? "жесткий, прямой, можешь ругнуть за откладывание" : "мягкий, заботливый, но честный"}
-
+${rest ? `\n${rest}\n` : ""}
 итоги по категориям:
 ${summary}
 
@@ -251,10 +288,12 @@ export function buildPlannerPrompt(
   existing: ExistingBlockLite[],
   ymd: string,
   tz: string,
+  weekday: number | null = null,
 ): string {
   const workStart = (profile?.work_hours_start ?? "09:00:00").slice(0, 5);
   const workEnd = (profile?.work_hours_end ?? "18:00:00").slice(0, 5);
   const tone = profile?.ai_tone ?? "gentle";
+  const rest = weekday !== null ? restDayContext(profile, weekday) : "";
 
   const existingText =
     existing.length === 0
@@ -279,6 +318,7 @@ export function buildPlannerPrompt(
 часовой пояс: ${tz}
 рабочие часы: ${workStart}-${workEnd}
 тон: ${tone === "firm" ? "жесткий, прямой, ругаешь за хаос" : "мягкий, заботливый, но честный"}
+${rest ? `\n${rest}\n` : ""}
 
 уже есть блоки на сегодня (НЕ ТРОГАЙ, ОБХОДИ):
 ${existingText}

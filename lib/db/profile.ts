@@ -14,6 +14,7 @@ export type Profile = {
   ai_tone: AiTone;
   evening_review_at: string; // "HH:MM:SS"
   evening_review_enabled: boolean;
+  rest_days: number[]; // 0=Sun..6=Sat. Default [6,0].
   last_proactive_at: string | null;
   created_at: string;
 };
@@ -25,6 +26,7 @@ export type ProfilePatch = Partial<{
   ai_tone: AiTone;
   evening_review_at: string;
   evening_review_enabled: boolean;
+  rest_days: number[];
 }>;
 
 export async function getProfile(
@@ -56,4 +58,18 @@ export async function upsertProfile(
 
 export function profileTimezone(profile: Profile | null): string {
   return profile?.timezone || DEFAULT_TIMEZONE;
+}
+
+export const DEFAULT_REST_DAYS = [6, 0]; // Sat, Sun
+
+export function profileRestDays(profile: Profile | null): number[] {
+  return profile?.rest_days?.length ? profile.rest_days : DEFAULT_REST_DAYS;
+}
+
+/** Is weekday `wd` (0=Sun..6=Sat) marked as rest day for this profile? */
+export function isRestWeekday(
+  profile: Profile | null,
+  weekday: number,
+): boolean {
+  return profileRestDays(profile).includes(weekday);
 }

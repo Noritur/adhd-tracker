@@ -2,6 +2,7 @@ import { google } from "@ai-sdk/google";
 import { generateObject } from "ai";
 import { z } from "zod";
 import type { Block } from "@/lib/db/blocks";
+import type { Profile } from "@/lib/db/profile";
 import { buildInsightPrompt, type InsightScope } from "./prompts";
 
 export const InsightSchema = z.object({
@@ -29,10 +30,12 @@ const MODEL_CHAIN = [
 export async function generateInsight(
   scope: InsightScope,
   blocks: Block[],
+  profile: Profile | null = null,
+  weekday: number | null = null,
 ): Promise<Insight | null> {
   if (blocks.length === 0) return null;
 
-  const prompt = buildInsightPrompt(scope, blocks);
+  const prompt = buildInsightPrompt(scope, blocks, profile, weekday);
   let lastError: unknown = null;
 
   for (const modelId of MODEL_CHAIN) {

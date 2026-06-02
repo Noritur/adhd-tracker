@@ -6,7 +6,21 @@ import {
   updateProfileAction,
   type UpdateProfileState,
 } from "@/app/settings/actions";
-import type { AiTone, Profile } from "@/lib/db/profile";
+import {
+  DEFAULT_REST_DAYS,
+  type AiTone,
+  type Profile,
+} from "@/lib/db/profile";
+
+const WEEKDAY_CHIPS: { value: number; label: string }[] = [
+  { value: 1, label: "пн" },
+  { value: 2, label: "вт" },
+  { value: 3, label: "ср" },
+  { value: 4, label: "чт" },
+  { value: 5, label: "пт" },
+  { value: 6, label: "сб" },
+  { value: 0, label: "нд" },
+];
 
 const POPULAR_TIMEZONES = [
   "Europe/Madrid",
@@ -51,6 +65,18 @@ export function SettingsForm({
   const [reviewEnabled, setReviewEnabled] = useState<boolean>(
     profile?.evening_review_enabled ?? true,
   );
+  const [restDays, setRestDays] = useState<Set<number>>(
+    new Set(profile?.rest_days?.length ? profile.rest_days : DEFAULT_REST_DAYS),
+  );
+
+  const toggleRestDay = (wd: number) => {
+    setRestDays((prev) => {
+      const next = new Set(prev);
+      if (next.has(wd)) next.delete(wd);
+      else next.add(wd);
+      return next;
+    });
+  };
 
   useEffect(() => {
     if (!state) return;
@@ -103,6 +129,38 @@ export function SettingsForm({
             className="bg-transparent text-sm font-semibold text-right outline-none tabular-nums"
           />
         </Row>
+        <input
+          type="hidden"
+          name="rest_days"
+          value={Array.from(restDays).sort().join(",")}
+        />
+        <div className="bg-card border border-border rounded-2xl p-4 flex flex-col gap-2.5">
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-muted-foreground">вихідні</span>
+            <span className="text-[11px] text-muted-foreground/60">
+              у ці дні AI не тисне на продуктивність
+            </span>
+          </div>
+          <div className="flex gap-1">
+            {WEEKDAY_CHIPS.map((wd) => {
+              const active = restDays.has(wd.value);
+              return (
+                <button
+                  key={wd.value}
+                  type="button"
+                  onClick={() => toggleRestDay(wd.value)}
+                  className={`flex-1 h-9 rounded-full text-xs font-bold transition-colors ${
+                    active
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-muted/60 text-muted-foreground"
+                  }`}
+                >
+                  {wd.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
       </Section>
 
       <Section title="Тренер">

@@ -15,6 +15,7 @@ import { getProfile, profileTimezone } from "@/lib/db/profile";
 import {
   getHHMMInTZ,
   getYMDInTZ,
+  getWeekdayInTZ,
   localDateTimeToUTC,
 } from "@/lib/time/tz";
 import { MIN_BLOCK_MIN, formatTime, timeStringToMin } from "@/lib/time/slots";
@@ -278,6 +279,7 @@ export async function generatePlanAction(
   const tz = profileTimezone(profile);
   const now = new Date();
   const ymd = getYMDInTZ(now, tz);
+  const weekday = getWeekdayInTZ(now, tz);
 
   const existing = await getBlocksForDate(supabase, user.id, now, tz);
   const existingLite: ExistingBlockLite[] = existing.map((b) => ({
@@ -287,7 +289,14 @@ export async function generatePlanAction(
     label: b.label,
   }));
 
-  const plan = await generatePlan(userText, profile, existingLite, ymd, tz);
+  const plan = await generatePlan(
+    userText,
+    profile,
+    existingLite,
+    ymd,
+    tz,
+    weekday,
+  );
   if (!plan) return { ok: false, error: "AI не зміг скласти план, спробуй ще" };
 
   const busy: { start: number; end: number; category: Category }[] =
@@ -459,6 +468,7 @@ export async function rescheduleAction(
     ),
   }));
 
+  const weekday = getWeekdayInTZ(now, tz);
   const result = await generateReschedule(
     moveItems,
     keepLite,
@@ -467,6 +477,7 @@ export async function rescheduleAction(
     tz,
     nowHHMM,
     userText,
+    weekday,
   );
   if (!result) {
     return { ok: false, error: "AI не зміг перепланувати, спробуй ще" };
@@ -609,6 +620,7 @@ export async function rebuildDayAction(
   const now = new Date();
   const nowISO = now.toISOString();
   const ymd = getYMDInTZ(now, tz);
+  const weekday = getWeekdayInTZ(now, tz);
 
   // 1. Delete all future blocks (end_at > now).
   let deleted = 0;
@@ -635,7 +647,14 @@ export async function rebuildDayAction(
   }));
 
   // 3. Generate a fresh plan from now.
-  const plan = await generatePlan(userText, profile, existingLite, ymd, tz);
+  const plan = await generatePlan(
+    userText,
+    profile,
+    existingLite,
+    ymd,
+    tz,
+    weekday,
+  );
   if (!plan) {
     return {
       ok: true,

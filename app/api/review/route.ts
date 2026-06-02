@@ -82,7 +82,8 @@ async function handler(request: Request): Promise<Response> {
       continue;
     }
 
-    const review = await generateReview(p, blocks);
+    const weekday = getWeekdayInTZ(now, tz);
+    const review = await generateReview(p, blocks, weekday);
     if (!review) {
       stats.failed++;
       continue;

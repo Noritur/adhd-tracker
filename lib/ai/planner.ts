@@ -50,8 +50,16 @@ export async function generatePlan(
   existing: ExistingBlockLite[],
   ymd: string,
   tz: string,
+  weekday: number | null = null,
 ): Promise<Plan | null> {
-  const prompt = buildPlannerPrompt(userText, profile, existing, ymd, tz);
+  const prompt = buildPlannerPrompt(
+    userText,
+    profile,
+    existing,
+    ymd,
+    tz,
+    weekday,
+  );
   let lastError: unknown = null;
 
   for (const modelId of MODEL_CHAIN) {

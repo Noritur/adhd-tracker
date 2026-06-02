@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getBlocksForDate, getBlocksForRange } from "@/lib/db/blocks";
 import { getProfile, profileTimezone } from "@/lib/db/profile";
-import { getYMDInTZ, localDayBoundsUTC } from "@/lib/time/tz";
+import { getYMDInTZ, getWeekdayInTZ, localDayBoundsUTC } from "@/lib/time/tz";
 import { generateInsight } from "@/lib/ai/insights";
 import { getOrGenerateInsight } from "@/lib/ai/cache";
 import type { InsightScope } from "@/lib/ai/prompts";
@@ -42,7 +42,9 @@ export async function GET(request: Request) {
         const start = new Date(end.getTime() - 7 * 24 * 60 * 60 * 1000);
         blocks = await getBlocksForRange(supabase, user.id, start, end);
       }
-      return generateInsight(scope, blocks);
+      const weekday =
+        scope === "today" ? getWeekdayInTZ(now, tz) : null;
+      return generateInsight(scope, blocks, profile, weekday);
     },
   );
 

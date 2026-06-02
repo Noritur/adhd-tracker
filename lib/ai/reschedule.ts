@@ -44,6 +44,7 @@ export async function generateReschedule(
   tz: string,
   nowHHMM: string,
   userText: string,
+  weekday: number | null = null,
 ): Promise<RescheduleResult | null> {
   const prompt = buildReschedulePrompt(
     toMove,
@@ -53,6 +54,7 @@ export async function generateReschedule(
     tz,
     nowHHMM,
     userText,
+    weekday,
   );
   let lastError: unknown = null;
 

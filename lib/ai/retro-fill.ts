@@ -1,9 +1,25 @@
 import { google } from "@ai-sdk/google";
 import { generateObject } from "ai";
 import { z } from "zod";
-import type { Profile } from "@/lib/db/profile";
+import { isRestWeekday, type Profile } from "@/lib/db/profile";
 import { COACH_VOICE } from "./master-prompt";
 import { CATEGORIES } from "@/lib/categories";
+
+const WEEKDAY_NAMES_RU = [
+  "воскресенье",
+  "понедельник",
+  "вторник",
+  "среда",
+  "четверг",
+  "пятница",
+  "суббота",
+];
+
+/** Weekday (0=Sun..6=Sat) for a YMD string interpreted as a calendar date. */
+function weekdayForYMD(ymd: string): number {
+  const [y, m, d] = ymd.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d)).getUTCDay();
+}
 
 export const RetroFillSchema = z.object({
   blocks: z
@@ -51,6 +67,12 @@ function buildRetroFillPrompt(
   const workStart = (profile?.work_hours_start ?? "09:00:00").slice(0, 5);
   const workEnd = (profile?.work_hours_end ?? "18:00:00").slice(0, 5);
   const catList = CATEGORIES.map((c) => `${c.value} (${c.label})`).join(", ");
+  const weekday = weekdayForYMD(ymd);
+  const dayName = WEEKDAY_NAMES_RU[weekday];
+  const isRest = isRestWeekday(profile, weekday);
+  const restBlock = isRest
+    ? `\nэто был МОЙ ВЫХОДНОЙ (${dayName}). не вытягивай "фокус" если человек его не упомянул. отдых, прогулки, social — норма выходного.\n`
+    : `\nдень недели: ${dayName} (рабочий).\n`;
 
   return `${COACH_VOICE}
 
@@ -61,6 +83,7 @@ function buildRetroFillPrompt(
 дата: ${ymd}
 часовой пояс: ${tz}
 рабочие часы: ${workStart}-${workEnd}
+${restBlock}
 
 я описую:
 ${userText}

@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getHHMMInTZ } from "@/lib/time/tz";
+import { getHHMMInTZ, getWeekdayInTZ } from "@/lib/time/tz";
 import { timeStringToMin } from "@/lib/time/slots";
 import { sendToUser } from "@/lib/push/send";
-import type { Profile } from "@/lib/db/profile";
+import { isRestWeekday, type Profile } from "@/lib/db/profile";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -14,6 +14,12 @@ const NUDGE_MESSAGES = [
   "доброго ранку. скажи що сьогодні треба — розкидаю по таймлайну.",
   "ранок. накидаємо план?",
   "ну що, який сьогодні режим? тицяй ранковий план.",
+];
+
+const REST_DAY_NUDGES = [
+  "ранок вихідного. план не обов'язковий — але якщо щось хочеш зробити, кинь.",
+  "вихідний. без structure, просто пливем. або стукни план — як хочеш.",
+  "сьогодні дозволено нічого не робити. але якщо щось хочеш, я тут.",
 ];
 
 async function handler(request: Request): Promise<Response> {
@@ -41,7 +47,13 @@ async function handler(request: Request): Promise<Response> {
   }
 
   const now = new Date();
-  const stats = { dispatched: 0, skipped_no_match: 0, no_subs: 0, failed: 0 };
+  const stats = {
+    dispatched: 0,
+    dispatched_rest: 0,
+    skipped_no_match: 0,
+    no_subs: 0,
+    failed: 0,
+  };
 
   for (const p of (profiles ?? []) as Profile[]) {
     const tz = p.timezone;
@@ -56,7 +68,10 @@ async function handler(request: Request): Promise<Response> {
       continue;
     }
 
-    const body = NUDGE_MESSAGES[Math.floor(Math.random() * NUDGE_MESSAGES.length)];
+    const weekday = getWeekdayInTZ(now, tz);
+    const isRest = isRestWeekday(p, weekday);
+    const pool = isRest ? REST_DAY_NUDGES : NUDGE_MESSAGES;
+    const body = pool[Math.floor(Math.random() * pool.length)];
 
     try {
       const res = await sendToUser(p.id, {
@@ -67,6 +82,8 @@ async function handler(request: Request): Promise<Response> {
       });
       if (res.sent === 0 && res.failed === 0) {
         stats.no_subs++;
+      } else if (isRest) {
+        stats.dispatched_rest++;
       } else {
         stats.dispatched++;
       }
