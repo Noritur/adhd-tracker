@@ -603,9 +603,10 @@ export type RebuildDayState = {
 };
 
 /**
- * "Rebuild day" — delete every block ending after now, then generate a
- * brand-new plan from scratch using only the past (completed) blocks as
- * context.  This is the "forget the plan, start over" escape hatch.
+ * "Rebuild day" — generate a brand-new plan from scratch, using only past
+ * (completed) blocks as context. ONLY deletes existing future blocks after
+ * the AI plan succeeds — if AI fails or times out, user's existing plan
+ * stays intact. This is the "forget the plan, start over" escape hatch.
  */
 export async function rebuildDayAction(
   _prev: RebuildDayState | null,
@@ -626,11 +627,43 @@ export async function rebuildDayAction(
   const profile = await getProfile(supabase, user.id);
   const tz = profileTimezone(profile);
   const now = new Date();
+  const nowMs = now.getTime();
   const nowISO = now.toISOString();
   const ymd = getYMDInTZ(now, tz);
   const weekday = getWeekdayInTZ(now, tz);
 
-  // 1. Delete all future blocks (end_at > now).
+  // 1. Fetch all today's blocks; partition into past vs future at `now`.
+  // Past blocks become the "existing" context for AI. Future blocks are
+  // candidates for deletion — but only AFTER AI succeeds.
+  const allBlocks = await getBlocksForDate(supabase, user.id, now, tz);
+  const pastBlocks = allBlocks.filter(
+    (b) => new Date(b.end_at).getTime() <= nowMs,
+  );
+  const existingLite: ExistingBlockLite[] = pastBlocks.map((b) => ({
+    start: getHHMMInTZ(new Date(b.start_at), tz),
+    end: getHHMMInTZ(new Date(b.end_at), tz),
+    category: b.category,
+    label: b.label,
+  }));
+
+  // 2. Generate a fresh plan. No destructive action yet — if AI fails,
+  // user keeps their existing future blocks.
+  const plan = await generatePlan(
+    userText,
+    profile,
+    existingLite,
+    ymd,
+    tz,
+    weekday,
+  );
+  if (!plan) {
+    return {
+      ok: false,
+      error: "AI не зміг побудувати план — нічого не змінив, спробуй ще",
+    };
+  }
+
+  // 3. AI succeeded — now safe to clear future blocks.
   let deleted = 0;
   try {
     deleted = await deleteFutureBlocks(supabase, user.id, nowISO);
@@ -643,34 +676,6 @@ export async function rebuildDayAction(
       }),
     );
     return { ok: false, error: "не зміг очистити майбутні блоки" };
-  }
-
-  // 2. Fetch remaining (past) blocks — these become the "existing" context.
-  const pastBlocks = await getBlocksForDate(supabase, user.id, now, tz);
-  const existingLite: ExistingBlockLite[] = pastBlocks.map((b) => ({
-    start: getHHMMInTZ(new Date(b.start_at), tz),
-    end: getHHMMInTZ(new Date(b.end_at), tz),
-    category: b.category,
-    label: b.label,
-  }));
-
-  // 3. Generate a fresh plan from now.
-  const plan = await generatePlan(
-    userText,
-    profile,
-    existingLite,
-    ymd,
-    tz,
-    weekday,
-  );
-  if (!plan) {
-    return {
-      ok: true,
-      deleted,
-      created: 0,
-      skipped: 0,
-      note: "очистив старий план, але AI не зміг побудувати новий — спробуй ще",
-    };
   }
 
   // 4. Insert new blocks (same logic as generatePlanAction).
