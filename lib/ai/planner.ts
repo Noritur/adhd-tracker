@@ -1,11 +1,10 @@
-import { google } from "@ai-sdk/google";
-import { generateObject } from "ai";
 import { z } from "zod";
 import type { Profile } from "@/lib/db/profile";
 import {
   buildPlannerPrompt,
   type ExistingBlockLite,
 } from "./prompts";
+import { runWithFallback } from "./model-chain";
 
 export const PlannerSchema = z.object({
   blocks: z
@@ -38,12 +37,6 @@ export const PlannerSchema = z.object({
 
 export type Plan = z.infer<typeof PlannerSchema>;
 
-const MODEL_CHAIN = [
-  "gemini-2.5-flash",
-  "gemini-2.5-flash-lite",
-  "gemini-2.0-flash",
-] as const;
-
 export async function generatePlan(
   userText: string,
   profile: Profile | null,
@@ -60,43 +53,20 @@ export async function generatePlan(
     tz,
     weekday,
   );
-  let lastError: unknown = null;
-
-  for (const modelId of MODEL_CHAIN) {
-    try {
-      const result = await generateObject({
-        model: google(modelId),
-        schema: PlannerSchema,
-        prompt,
-      });
-      console.log(
-        JSON.stringify({
-          level: "info",
-          msg: "ai.planner.ok",
-          model: modelId,
-          n: result.object.blocks.length,
-        }),
-      );
-      return result.object;
-    } catch (e) {
-      lastError = e;
-      console.error(
-        JSON.stringify({
-          level: "warn",
-          msg: "ai.planner.model_failed",
-          model: modelId,
-          error: e instanceof Error ? e.message : String(e),
-        }),
-      );
-    }
+  const result = await runWithFallback({
+    schema: PlannerSchema,
+    prompt,
+    logKey: "ai.planner",
+    logContext: { existing_count: existing.length },
+  });
+  if (result) {
+    console.log(
+      JSON.stringify({
+        level: "info",
+        msg: "ai.planner.blocks_generated",
+        n: result.blocks.length,
+      }),
+    );
   }
-
-  console.error(
-    JSON.stringify({
-      level: "error",
-      msg: "ai.planner.exhausted",
-      error: lastError instanceof Error ? lastError.message : String(lastError),
-    }),
-  );
-  return null;
+  return result;
 }

@@ -1,5 +1,3 @@
-import { google } from "@ai-sdk/google";
-import { generateObject } from "ai";
 import { z } from "zod";
 import type { Profile } from "@/lib/db/profile";
 import {
@@ -7,6 +5,7 @@ import {
   type ExistingBlockLite,
   type RescheduleMoveItem,
 } from "./prompts";
+import { runWithFallback } from "./model-chain";
 
 export const RescheduleSchema = z.object({
   blocks: z
@@ -30,12 +29,6 @@ export const RescheduleSchema = z.object({
 
 export type RescheduleResult = z.infer<typeof RescheduleSchema>;
 
-const MODEL_CHAIN = [
-  "gemini-2.5-flash",
-  "gemini-2.5-flash-lite",
-  "gemini-2.0-flash",
-] as const;
-
 export async function generateReschedule(
   toMove: RescheduleMoveItem[],
   keep: ExistingBlockLite[],
@@ -56,43 +49,10 @@ export async function generateReschedule(
     userText,
     weekday,
   );
-  let lastError: unknown = null;
-
-  for (const modelId of MODEL_CHAIN) {
-    try {
-      const result = await generateObject({
-        model: google(modelId),
-        schema: RescheduleSchema,
-        prompt,
-      });
-      console.log(
-        JSON.stringify({
-          level: "info",
-          msg: "ai.reschedule.ok",
-          model: modelId,
-          n: result.object.blocks.length,
-        }),
-      );
-      return result.object;
-    } catch (e) {
-      lastError = e;
-      console.error(
-        JSON.stringify({
-          level: "warn",
-          msg: "ai.reschedule.model_failed",
-          model: modelId,
-          error: e instanceof Error ? e.message : String(e),
-        }),
-      );
-    }
-  }
-
-  console.error(
-    JSON.stringify({
-      level: "error",
-      msg: "ai.reschedule.exhausted",
-      error: lastError instanceof Error ? lastError.message : String(lastError),
-    }),
-  );
-  return null;
+  return runWithFallback({
+    schema: RescheduleSchema,
+    prompt,
+    logKey: "ai.reschedule",
+    logContext: { to_move: toMove.length, keep: keep.length },
+  });
 }

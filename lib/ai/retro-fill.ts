@@ -1,9 +1,8 @@
-import { google } from "@ai-sdk/google";
-import { generateObject } from "ai";
 import { z } from "zod";
 import { isRestWeekday, type Profile } from "@/lib/db/profile";
 import { COACH_VOICE } from "./master-prompt";
 import { CATEGORIES } from "@/lib/categories";
+import { runWithFallback } from "./model-chain";
 
 const WEEKDAY_NAMES_RU = [
   "воскресенье",
@@ -51,12 +50,6 @@ export const RetroFillSchema = z.object({
 });
 
 export type RetroFill = z.infer<typeof RetroFillSchema>;
-
-const MODEL_CHAIN = [
-  "gemini-2.5-flash",
-  "gemini-2.5-flash-lite",
-  "gemini-2.0-flash",
-] as const;
 
 function buildRetroFillPrompt(
   userText: string,
@@ -110,43 +103,10 @@ export async function generateRetroFill(
   profile: Profile | null,
 ): Promise<RetroFill | null> {
   const prompt = buildRetroFillPrompt(userText, ymd, tz, profile);
-  let lastError: unknown = null;
-
-  for (const modelId of MODEL_CHAIN) {
-    try {
-      const result = await generateObject({
-        model: google(modelId),
-        schema: RetroFillSchema,
-        prompt,
-      });
-      console.log(
-        JSON.stringify({
-          level: "info",
-          msg: "ai.retro_fill.ok",
-          model: modelId,
-          n: result.object.blocks.length,
-        }),
-      );
-      return result.object;
-    } catch (e) {
-      lastError = e;
-      console.error(
-        JSON.stringify({
-          level: "warn",
-          msg: "ai.retro_fill.model_failed",
-          model: modelId,
-          error: e instanceof Error ? e.message : String(e),
-        }),
-      );
-    }
-  }
-
-  console.error(
-    JSON.stringify({
-      level: "error",
-      msg: "ai.retro_fill.exhausted",
-      error: lastError instanceof Error ? lastError.message : String(lastError),
-    }),
-  );
-  return null;
+  return runWithFallback({
+    schema: RetroFillSchema,
+    prompt,
+    logKey: "ai.retro_fill",
+    logContext: { ymd },
+  });
 }

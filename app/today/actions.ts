@@ -18,9 +18,10 @@ import {
   getWeekdayInTZ,
   localDateTimeToUTC,
 } from "@/lib/time/tz";
-import { MIN_BLOCK_MIN, formatTime, timeStringToMin } from "@/lib/time/slots";
+import { formatTime, timeStringToMin } from "@/lib/time/slots";
 import { generatePlan } from "@/lib/ai/planner";
 import { generateReschedule } from "@/lib/ai/reschedule";
+import { applyPlanBlocks } from "@/lib/ai/apply-plan";
 import type {
   ExistingBlockLite,
   RescheduleMoveItem,
@@ -215,50 +216,6 @@ export type GeneratePlanState = {
   error?: string;
 };
 
-/** Largest free slot inside [aiStart, aiEnd) given busy intervals (in minutes-of-day). */
-function findLargestFreeSlot(
-  aiStart: number,
-  aiEnd: number,
-  busy: { start: number; end: number }[],
-  minLen: number,
-): { start: number; end: number } | null {
-  const clipped = busy
-    .map((b) => ({
-      start: Math.max(b.start, aiStart),
-      end: Math.min(b.end, aiEnd),
-    }))
-    .filter((b) => b.start < b.end)
-    .sort((a, b) => a.start - b.start);
-
-  let bestStart = 0;
-  let bestEnd = 0;
-  let bestLen = 0;
-  let cursor = aiStart;
-
-  for (const b of clipped) {
-    if (b.start > cursor) {
-      const len = b.start - cursor;
-      if (len > bestLen) {
-        bestLen = len;
-        bestStart = cursor;
-        bestEnd = b.start;
-      }
-    }
-    cursor = Math.max(cursor, b.end);
-  }
-  if (cursor < aiEnd) {
-    const len = aiEnd - cursor;
-    if (len > bestLen) {
-      bestLen = len;
-      bestStart = cursor;
-      bestEnd = aiEnd;
-    }
-  }
-
-  if (bestLen < minLen) return null;
-  return { start: bestStart, end: bestEnd };
-}
-
 export async function generatePlanAction(
   _prev: GeneratePlanState | null,
   formData: FormData,
@@ -299,88 +256,15 @@ export async function generatePlanAction(
   );
   if (!plan) return { ok: false, error: "AI не зміг скласти план, спробуй ще" };
 
-  const busy: { start: number; end: number; category: Category }[] =
-    existing.map((b) => ({
-      start: timeStringToMin(getHHMMInTZ(new Date(b.start_at), tz)),
-      end: timeStringToMin(getHHMMInTZ(new Date(b.end_at), tz)),
-      category: b.category,
-    }));
-
-  let created = 0;
-  let skipped = 0;
-
-  // Sort AI blocks by start for determinism.
-  const sorted = [...plan.blocks].sort(
-    (a, b) => timeStringToMin(a.start) - timeStringToMin(b.start),
-  );
-
-  for (const blk of sorted) {
-    const aiStart = timeStringToMin(blk.start);
-    const aiEnd = timeStringToMin(blk.end);
-    if (aiEnd <= aiStart) {
-      skipped++;
-      continue;
-    }
-
-    const slot = findLargestFreeSlot(aiStart, aiEnd, busy, MIN_BLOCK_MIN);
-    if (!slot) {
-      skipped++;
-      continue;
-    }
-
-    const cat = blk.category as Category;
-    let sMin = slot.start;
-    let eMin = slot.end;
-
-    // Cap focus blocks at 50 min (planner trims rather than dropping).
-    if (isFocus(cat) && eMin - sMin > MAX_FOCUS_MIN) {
-      eMin = sMin + MAX_FOCUS_MIN;
-    }
-
-    // Enforce 15-min spacing between focus blocks; skip if too tight.
-    if (isFocus(cat)) {
-      const tooTight = busy.some((b) => {
-        if (!isFocus(b.category)) return false;
-        const overlaps = sMin < b.end && b.start < eMin;
-        if (overlaps) return false;
-        const gap = eMin <= b.start ? b.start - eMin : sMin - b.end;
-        return gap < 15;
-      });
-      if (tooTight) {
-        skipped++;
-        continue;
-      }
-    }
-
-    const startISO = localDateTimeToUTC(ymd, formatTime(sMin), tz).toISOString();
-    const endISO = localDateTimeToUTC(ymd, formatTime(eMin), tz).toISOString();
-
-    try {
-      await createBlock(supabase, {
-        user_id: user.id,
-        start_at: startISO,
-        end_at: endISO,
-        category: cat,
-        label: blk.label,
-      });
-      busy.push({ start: sMin, end: eMin, category: cat });
-      created++;
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      if (msg.includes("time_blocks_no_overlap")) {
-        skipped++;
-      } else {
-        console.error(
-          JSON.stringify({
-            level: "error",
-            msg: "today.plan_insert_failed",
-            error: msg,
-          }),
-        );
-        skipped++;
-      }
-    }
-  }
+  const { created, skipped } = await applyPlanBlocks({
+    supabase,
+    userId: user.id,
+    ymd,
+    tz,
+    seedBlocks: existing,
+    plan,
+    logKey: "today.plan",
+  });
 
   revalidatePath("/today");
   return { ok: true, created, skipped, note: plan.note ?? null };
@@ -678,86 +562,16 @@ export async function rebuildDayAction(
     return { ok: false, error: "не зміг очистити майбутні блоки" };
   }
 
-  // 4. Insert new blocks (same logic as generatePlanAction).
-  const busy: { start: number; end: number; category: Category }[] =
-    pastBlocks.map((b) => ({
-      start: timeStringToMin(getHHMMInTZ(new Date(b.start_at), tz)),
-      end: timeStringToMin(getHHMMInTZ(new Date(b.end_at), tz)),
-      category: b.category,
-    }));
-
-  let created = 0;
-  let skipped = 0;
-
-  const sorted = [...plan.blocks].sort(
-    (a, b) => timeStringToMin(a.start) - timeStringToMin(b.start),
-  );
-
-  for (const blk of sorted) {
-    const aiStart = timeStringToMin(blk.start);
-    const aiEnd = timeStringToMin(blk.end);
-    if (aiEnd <= aiStart) {
-      skipped++;
-      continue;
-    }
-
-    const slot = findLargestFreeSlot(aiStart, aiEnd, busy, MIN_BLOCK_MIN);
-    if (!slot) {
-      skipped++;
-      continue;
-    }
-
-    const cat = blk.category as Category;
-    let sMin = slot.start;
-    let eMin = slot.end;
-
-    if (isFocus(cat) && eMin - sMin > MAX_FOCUS_MIN) {
-      eMin = sMin + MAX_FOCUS_MIN;
-    }
-
-    if (isFocus(cat)) {
-      const tooTight = busy.some((b) => {
-        if (!isFocus(b.category)) return false;
-        const overlaps = sMin < b.end && b.start < eMin;
-        if (overlaps) return false;
-        const gap = eMin <= b.start ? b.start - eMin : sMin - b.end;
-        return gap < 15;
-      });
-      if (tooTight) {
-        skipped++;
-        continue;
-      }
-    }
-
-    const startISO = localDateTimeToUTC(ymd, formatTime(sMin), tz).toISOString();
-    const endISO = localDateTimeToUTC(ymd, formatTime(eMin), tz).toISOString();
-
-    try {
-      await createBlock(supabase, {
-        user_id: user.id,
-        start_at: startISO,
-        end_at: endISO,
-        category: cat,
-        label: blk.label,
-      });
-      busy.push({ start: sMin, end: eMin, category: cat });
-      created++;
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      if (msg.includes("time_blocks_no_overlap")) {
-        skipped++;
-      } else {
-        console.error(
-          JSON.stringify({
-            level: "error",
-            msg: "today.rebuild_insert_failed",
-            error: msg,
-          }),
-        );
-        skipped++;
-      }
-    }
-  }
+  // 4. Insert new blocks via shared planner-apply helper.
+  const { created, skipped } = await applyPlanBlocks({
+    supabase,
+    userId: user.id,
+    ymd,
+    tz,
+    seedBlocks: pastBlocks,
+    plan,
+    logKey: "today.rebuild",
+  });
 
   revalidatePath("/today");
   return { ok: true, deleted, created, skipped, note: plan.note ?? null };

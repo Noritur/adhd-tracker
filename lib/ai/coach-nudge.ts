@@ -3,14 +3,9 @@ import { generateObject } from "ai";
 import { z } from "zod";
 import type { Profile } from "@/lib/db/profile";
 import { COACH_VOICE } from "./master-prompt";
+import { MODEL_CHAIN } from "./model-chain";
 
 export type NudgeKind = "swamp_streak" | "focus_no_break";
-
-const MODEL_CHAIN = [
-  "gemini-2.5-flash",
-  "gemini-2.5-flash-lite",
-  "gemini-2.0-flash",
-] as const;
 
 const SITUATION: Record<NudgeKind, string> = {
   swamp_streak:
