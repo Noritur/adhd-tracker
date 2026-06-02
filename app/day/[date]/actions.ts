@@ -7,7 +7,12 @@ import { getProfile, profileTimezone } from "@/lib/db/profile";
 import { generateRetroFill } from "@/lib/ai/retro-fill";
 import { localDateTimeToUTC } from "@/lib/time/tz";
 import { timeStringToMin, formatTime, MIN_BLOCK_MIN } from "@/lib/time/slots";
-import { isFocus, MAX_FOCUS_MIN } from "@/lib/rules/focus-limits";
+import {
+  isFocus,
+  MAX_FOCUS_MIN,
+  validateFocusBlock,
+  type FocusCheckBlock,
+} from "@/lib/rules/focus-limits";
 import type { Category } from "@/lib/categories";
 
 export type RetroFillState = {
@@ -66,7 +71,10 @@ export async function retroFillAction(
   }
 
   // Insert blocks with overlap/focus safety.
+  // `busy` keeps minute-of-day intervals for fast overlap pre-check;
+  // `occupiedFocus` mirrors them as FocusCheckBlock for the shared validator.
   const busy: { start: number; end: number; category: Category }[] = [];
+  const occupiedFocus: FocusCheckBlock[] = [];
   let created = 0;
   let skipped = 0;
 
@@ -82,7 +90,7 @@ export async function retroFillAction(
       continue;
     }
 
-    // Check overlap with already inserted blocks.
+    // Check overlap with already inserted blocks (pre-DB short-circuit).
     const overlaps = busy.some(
       (b) => aiStart < b.end && b.start < aiEnd,
     );
@@ -94,23 +102,9 @@ export async function retroFillAction(
     const cat = blk.category as Category;
     let eMin = aiEnd;
 
-    // Cap focus at 50 min.
+    // Cap focus at 50 min — trim, don't drop (same pattern as planner).
     if (isFocus(cat) && eMin - aiStart > MAX_FOCUS_MIN) {
       eMin = aiStart + MAX_FOCUS_MIN;
-    }
-
-    // 15-min gap between focus blocks.
-    if (isFocus(cat)) {
-      const tooTight = busy.some((b) => {
-        if (!isFocus(b.category)) return false;
-        const gap =
-          eMin <= b.start ? b.start - eMin : aiStart - b.end;
-        return gap >= 0 && gap < 15;
-      });
-      if (tooTight) {
-        skipped++;
-        continue;
-      }
     }
 
     const startISO = localDateTimeToUTC(
@@ -124,6 +118,22 @@ export async function retroFillAction(
       tz,
     ).toISOString();
 
+    // Run shared focus-rule validation: 50-min cap + 15-min spacing rule.
+    // Trim already handled duration, but validator catches gap violation
+    // against previously inserted focus blocks.
+    if (isFocus(cat)) {
+      const candidate: FocusCheckBlock = {
+        category: cat,
+        startMs: new Date(startISO).getTime(),
+        endMs: new Date(endISO).getTime(),
+      };
+      const check = validateFocusBlock(candidate, occupiedFocus);
+      if (!check.ok) {
+        skipped++;
+        continue;
+      }
+    }
+
     try {
       await createBlock(supabase, {
         user_id: user.id,
@@ -133,6 +143,13 @@ export async function retroFillAction(
         label: blk.label ?? null,
       });
       busy.push({ start: aiStart, end: eMin, category: cat });
+      if (isFocus(cat)) {
+        occupiedFocus.push({
+          category: cat,
+          startMs: new Date(startISO).getTime(),
+          endMs: new Date(endISO).getTime(),
+        });
+      }
       created++;
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
