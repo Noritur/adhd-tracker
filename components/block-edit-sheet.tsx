@@ -23,7 +23,7 @@ import {
 } from "@/lib/categories";
 import {
   formatTime,
-  localDayMinutesToISO,
+  minutesToISOInTZ,
   timeStringToMin,
 } from "@/lib/time/slots";
 
@@ -37,11 +37,15 @@ export type EditingBlock = {
 
 export function BlockEditSheet({
   editing,
-  dateISO,
+  ymd,
+  tz,
   onClose,
 }: {
   editing: EditingBlock | null;
-  dateISO: string;
+  /** Local YMD of the day being edited. */
+  ymd: string;
+  /** Profile timezone — drives the hidden ISO conversion. */
+  tz: string;
   onClose: () => void;
 }) {
   const [category, setCategory] = useState<Category>(DEFAULT_CATEGORY);
@@ -98,16 +102,16 @@ export function BlockEditSheet({
         </SheetHeader>
 
         <form action={formAction} className="flex flex-col gap-5 mt-5">
-          {/* Hidden fields built from local state */}
+          {/* Hidden fields built from local state, ISO in profile TZ. */}
           <input
             type="hidden"
             name="start_at"
-            value={localDayMinutesToISO(new Date(dateISO), startMin)}
+            value={minutesToISOInTZ(ymd, startMin, tz)}
           />
           <input
             type="hidden"
             name="end_at"
-            value={localDayMinutesToISO(new Date(dateISO), endMin)}
+            value={minutesToISOInTZ(ymd, endMin, tz)}
           />
           <input type="hidden" name="category" value={category} />
           {editing?.id ? (

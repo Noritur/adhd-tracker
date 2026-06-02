@@ -24,9 +24,10 @@ export async function generateInsight(
   blocks: Block[],
   profile: Profile | null = null,
   weekday: number | null = null,
+  tz: string = "UTC",
 ): Promise<Insight | null> {
   if (blocks.length === 0) return null;
-  const prompt = buildInsightPrompt(scope, blocks, profile, weekday);
+  const prompt = buildInsightPrompt(scope, blocks, profile, weekday, tz);
   return runWithFallback({
     schema: InsightSchema,
     prompt,

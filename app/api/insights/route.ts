@@ -44,7 +44,7 @@ export async function GET(request: Request) {
       }
       const weekday =
         scope === "today" ? getWeekdayInTZ(now, tz) : null;
-      return generateInsight(scope, blocks, profile, weekday);
+      return generateInsight(scope, blocks, profile, weekday, tz);
     },
   );
 

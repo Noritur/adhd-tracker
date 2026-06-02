@@ -83,7 +83,7 @@ async function handler(request: Request): Promise<Response> {
     }
 
     const weekday = getWeekdayInTZ(now, tz);
-    const review = await generateReview(p, blocks, weekday);
+    const review = await generateReview(p, blocks, weekday, tz);
     if (!review) {
       stats.failed++;
       continue;

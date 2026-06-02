@@ -42,7 +42,7 @@ export async function InsightsCard({ scope }: { scope: InsightScope }) {
       // weekday). "week" spans both rest + work days, leave null so the
       // prompt skips the rest-day block instead of misapplying it.
       const weekday = scope === "today" ? getWeekdayInTZ(now, tz) : null;
-      return generateInsight(scope, blocks, profile, weekday);
+      return generateInsight(scope, blocks, profile, weekday, tz);
     },
   );
 

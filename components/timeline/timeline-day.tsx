@@ -17,8 +17,8 @@ import {
   PX_PER_MIN,
   clampMin,
   formatTime,
-  isoToLocalDayMinutes,
-  localDayMinutesToISO,
+  isoToMinutesInTZ,
+  minutesToISOInTZ,
   snap,
 } from "@/lib/time/slots";
 import type { Block } from "@/lib/db/blocks";
@@ -36,12 +36,13 @@ function getLaneBounds(
   origStart: number,
   origEnd: number,
   otherBlocks: Block[],
+  tz: string,
 ): { maxAbove: number; minBelow: number } {
   let maxAbove = 0;
   let minBelow = DAY_MINUTES;
   for (const b of otherBlocks) {
-    const bStart = isoToLocalDayMinutes(b.start_at);
-    const bEnd = isoToLocalDayMinutes(b.end_at);
+    const bStart = isoToMinutesInTZ(b.start_at, tz);
+    const bEnd = isoToMinutesInTZ(b.end_at, tz);
     if (bEnd <= origStart) maxAbove = Math.max(maxAbove, bEnd);
     if (bStart >= origEnd) minBelow = Math.min(minBelow, bStart);
   }
@@ -50,10 +51,14 @@ function getLaneBounds(
 
 export function TimelineDay({
   initialBlocks,
-  dateISO,
+  ymd,
+  tz,
 }: {
   initialBlocks: Block[];
-  dateISO: string;
+  /** Local-day YMD (in `tz`) the timeline represents. */
+  ymd: string;
+  /** Profile timezone — drives all time math and now-line. */
+  tz: string;
 }) {
   // Local mirror of blocks so drag previews are immediate.
   const [blocks, setBlocks] = useState<Block[]>(initialBlocks);
@@ -94,13 +99,13 @@ export function TimelineDay({
   const fitInGap = (startMin: number, desiredEnd: number) => {
     // If start falls inside any block, refuse (caller should ignore tap)
     for (const b of blocksRef.current) {
-      const bStart = isoToLocalDayMinutes(b.start_at);
-      const bEnd = isoToLocalDayMinutes(b.end_at);
+      const bStart = isoToMinutesInTZ(b.start_at, tz);
+      const bEnd = isoToMinutesInTZ(b.end_at, tz);
       if (bStart <= startMin && startMin < bEnd) return null;
     }
     let nearestBelow = DAY_MINUTES;
     for (const b of blocksRef.current) {
-      const bStart = isoToLocalDayMinutes(b.start_at);
+      const bStart = isoToMinutesInTZ(b.start_at, tz);
       if (bStart > startMin && bStart < nearestBelow) nearestBelow = bStart;
     }
     const endMin = Math.min(desiredEnd, nearestBelow);
@@ -125,8 +130,8 @@ export function TimelineDay({
   };
 
   const openCreateNow = () => {
-    const now = new Date();
-    const min = clampMin(snap(now.getHours() * 60 + now.getMinutes()));
+    // Now-minute in user's profile TZ, not the browser's.
+    const min = clampMin(snap(isoToMinutesInTZ(new Date().toISOString(), tz)));
     const desiredStart = clampMin(min - 30);
     const desiredEnd = clampMin(min + 30);
     const fit = fitInGap(desiredStart, desiredEnd);
@@ -199,19 +204,20 @@ export function TimelineDay({
             />
           ))}
 
-          <NowLine />
+          <NowLine tz={tz} />
 
           {blocks.map((block) => (
             <BlockChip
               key={block.id}
               block={block}
               otherBlocks={blocks.filter((b) => b.id !== block.id)}
-              dateISO={dateISO}
+              ymd={ymd}
+              tz={tz}
               onTap={() =>
                 setEditing({
                   id: block.id,
-                  startMin: isoToLocalDayMinutes(block.start_at),
-                  endMin: isoToLocalDayMinutes(block.end_at),
+                  startMin: isoToMinutesInTZ(block.start_at, tz),
+                  endMin: isoToMinutesInTZ(block.end_at, tz),
                   category: block.category,
                   label: block.label ?? "",
                 })
@@ -242,7 +248,8 @@ export function TimelineDay({
 
       <BlockEditSheet
         editing={editing}
-        dateISO={dateISO}
+        ymd={ymd}
+        tz={tz}
         onClose={() => setEditing(null)}
       />
     </>
@@ -252,20 +259,22 @@ export function TimelineDay({
 function BlockChip({
   block,
   otherBlocks,
-  dateISO,
+  ymd,
+  tz,
   onTap,
   onLocalChange,
   onCommit,
 }: {
   block: Block;
   otherBlocks: Block[];
-  dateISO: string;
+  ymd: string;
+  tz: string;
   onTap: () => void;
   onLocalChange: (id: number, patch: Partial<Block>) => void;
   onCommit: (id: number) => Promise<void>;
 }) {
-  const startMin = isoToLocalDayMinutes(block.start_at);
-  const endMin = isoToLocalDayMinutes(block.end_at);
+  const startMin = isoToMinutesInTZ(block.start_at, tz);
+  const endMin = isoToMinutesInTZ(block.end_at, tz);
   const height = Math.max(MIN_BLOCK_MIN, endMin - startMin) * PX_PER_MIN;
   // Adaptive content tiers — keep geometry (1min=1px) untouched, only
   // change how much text/padding fits.
@@ -295,8 +304,8 @@ function BlockChip({
     dragRef.current = {
       mode,
       startY: e.clientY,
-      origStart: isoToLocalDayMinutes(block.start_at),
-      origEnd: isoToLocalDayMinutes(block.end_at),
+      origStart: isoToMinutesInTZ(block.start_at, tz),
+      origEnd: isoToMinutesInTZ(block.end_at, tz),
       dragging: false,
       pointerId: e.pointerId,
     };
@@ -318,6 +327,7 @@ function BlockChip({
       state.origStart,
       state.origEnd,
       otherBlocks,
+      tz,
     );
 
     if (state.mode === "move") {
@@ -345,8 +355,8 @@ function BlockChip({
     }
 
     onLocalChange(block.id, {
-      start_at: localDayMinutesToISO(new Date(dateISO), newStart),
-      end_at: localDayMinutesToISO(new Date(dateISO), newEnd),
+      start_at: minutesToISOInTZ(ymd, newStart, tz),
+      end_at: minutesToISOInTZ(ymd, newEnd, tz),
     });
   };
 
@@ -462,17 +472,19 @@ function BlockChip({
   );
 }
 
-function NowLine() {
+function NowLine({ tz }: { tz: string }) {
   const [min, setMin] = useState<number | null>(null);
   useEffect(() => {
     const tick = () => {
-      const now = new Date();
-      setMin(now.getHours() * 60 + now.getMinutes());
+      // Render the now-line where it would appear on the user's local
+      // clock, not the device clock. For travelers / wrong device TZ
+      // these can diverge by hours.
+      setMin(isoToMinutesInTZ(new Date().toISOString(), tz));
     };
     tick();
     const id = setInterval(tick, 60_000);
     return () => clearInterval(id);
-  }, []);
+  }, [tz]);
 
   if (min === null) return null;
   return (

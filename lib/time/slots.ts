@@ -5,6 +5,8 @@
  * Snap = 15 minutes.
  */
 
+import { getHHMMInTZ, localDateTimeToUTC } from "./tz";
+
 export const PX_PER_MIN = 1;
 export const SNAP_MIN = 15;
 export const DAY_MINUTES = 24 * 60;
@@ -26,7 +28,12 @@ export function clampMin(min: number): number {
   return Math.max(0, Math.min(DAY_MINUTES, min));
 }
 
-/** Build an ISO timestamp from a local date + minutes-of-day. */
+/**
+ * Build an ISO timestamp from a local date + minutes-of-day **in the
+ * browser/server timezone**. Use only when caller is OK with that
+ * (anonymous local time, demo data). For user-data writes prefer
+ * `minutesToISOInTZ(ymd, minutes, tz)`.
+ */
 export function localDayMinutesToISO(date: Date, minutes: number): string {
   const d = new Date(date);
   d.setHours(0, 0, 0, 0);
@@ -34,10 +41,34 @@ export function localDayMinutesToISO(date: Date, minutes: number): string {
   return d.toISOString();
 }
 
-/** Extract minutes-of-day in the browser's local timezone from an ISO string. */
+/**
+ * Extract minutes-of-day in the **browser/server timezone** from an ISO
+ * string. Use only when caller is OK with that. For TZ-correct reads,
+ * use `isoToMinutesInTZ(iso, tz)`.
+ */
 export function isoToLocalDayMinutes(iso: string): number {
   const d = new Date(iso);
   return d.getHours() * 60 + d.getMinutes();
+}
+
+/**
+ * TZ-aware: minutes-of-day for `iso` interpreted in `tz`. Wraps
+ * `getHHMMInTZ`. Use this everywhere user-facing time math runs.
+ */
+export function isoToMinutesInTZ(iso: string, tz: string): number {
+  return timeStringToMin(getHHMMInTZ(new Date(iso), tz));
+}
+
+/**
+ * TZ-aware: build a UTC ISO timestamp from `ymd` + minutes-of-day,
+ * interpreting the local time in `tz`. Wraps `localDateTimeToUTC`.
+ */
+export function minutesToISOInTZ(
+  ymd: string,
+  minutes: number,
+  tz: string,
+): string {
+  return localDateTimeToUTC(ymd, formatTime(minutes), tz).toISOString();
 }
 
 /** Format minutes-of-day as H:MM. */

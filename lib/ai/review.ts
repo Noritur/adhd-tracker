@@ -23,9 +23,10 @@ export async function generateReview(
   profile: Profile | null,
   blocks: Block[],
   weekday: number | null = null,
+  tz: string = "UTC",
 ): Promise<AiReview | null> {
   if (blocks.length === 0) return null;
-  const prompt = buildReviewPrompt(profile, blocks, weekday);
+  const prompt = buildReviewPrompt(profile, blocks, weekday, tz);
   return runWithFallback({
     schema: ReviewSchema,
     prompt,

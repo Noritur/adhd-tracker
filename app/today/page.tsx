@@ -101,7 +101,8 @@ export default async function TodayPage() {
         </Suspense>
         <TimelineDay
           initialBlocks={blocks}
-          dateISO={today.toISOString()}
+          ymd={ymdInTZ}
+          tz={tz}
         />
       </div>
 

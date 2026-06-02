@@ -1,11 +1,8 @@
 import type { Block } from "@/lib/db/blocks";
 import { isRestWeekday, type Profile } from "@/lib/db/profile";
 import { CATEGORIES, CATEGORIES_BY_VALUE, type Category } from "@/lib/categories";
-import {
-  formatDuration,
-  isoToLocalDayMinutes,
-  formatTime,
-} from "@/lib/time/slots";
+import { formatDuration } from "@/lib/time/slots";
+import { getHHMMInTZ, getYMDInTZ } from "@/lib/time/tz";
 import { COACH_VOICE } from "./master-prompt";
 
 const WEEKDAY_NAMES_RU = [
@@ -70,7 +67,7 @@ function summarizeByCategory(blocks: Block[]): string {
     .join("\n");
 }
 
-function summarizeTimeline(blocks: Block[]): string {
+function summarizeTimeline(blocks: Block[], tz: string): string {
   if (blocks.length === 0) return "";
   return blocks
     .slice() // copy
@@ -79,8 +76,11 @@ function summarizeTimeline(blocks: Block[]): string {
         new Date(a.start_at).getTime() - new Date(b.start_at).getTime(),
     )
     .map((b) => {
-      const startMin = isoToLocalDayMinutes(b.start_at);
-      const endMin = isoToLocalDayMinutes(b.end_at);
+      // TZ-aware: render time as it appears in user's profile timezone,
+      // not the server/Vercel TZ (which was usually UTC and shifted the
+      // AI's view of the day by hours).
+      const startHHMM = getHHMMInTZ(new Date(b.start_at), tz);
+      const endHHMM = getHHMMInTZ(new Date(b.end_at), tz);
       const cat = CATEGORIES_BY_VALUE[b.category].label;
       const label = b.label ? ` — ${b.label}` : "";
       const mood =
@@ -91,16 +91,19 @@ function summarizeTimeline(blocks: Block[]): string {
             : b.mood === "swamp"
               ? " [энергия: тяжело/болото]"
               : "";
-      return `${formatTime(startMin)}-${formatTime(endMin)} ${cat}${label}${mood}`;
+      return `${startHHMM}-${endHHMM} ${cat}${label}${mood}`;
     })
     .join("\n");
 }
 
-function summarizeByDay(blocks: Block[]): string {
+function summarizeByDay(blocks: Block[], tz: string): string {
   if (blocks.length === 0) return "ничего не залогано";
   const byDay: Record<string, Partial<Record<Category, number>>> = {};
   for (const b of blocks) {
-    const day = new Date(b.start_at).toISOString().split("T")[0];
+    // TZ-aware day bucket: previously `toISOString().split("T")[0]` put
+    // late-night local blocks under the next UTC day, scrambling weekly
+    // insight per-day rows.
+    const day = getYMDInTZ(new Date(b.start_at), tz);
     byDay[day] = byDay[day] ?? {};
     byDay[day][b.category] =
       (byDay[day][b.category] ?? 0) + blockDurationMin(b);
@@ -125,10 +128,11 @@ export function buildInsightPrompt(
   blocks: Block[],
   profile: Profile | null = null,
   weekday: number | null = null,
+  tz: string = "UTC",
 ): string {
   if (scope === "today") {
     const summary = summarizeByCategory(blocks);
-    const timeline = summarizeTimeline(blocks);
+    const timeline = summarizeTimeline(blocks, tz);
     const rest = weekday !== null ? restDayContext(profile, weekday) : "";
     return `${COACH_VOICE}
 
@@ -153,7 +157,7 @@ ${timeline || "(пусто)"}
 
   // week scope
   const summary = summarizeByCategory(blocks);
-  const byDay = summarizeByDay(blocks);
+  const byDay = summarizeByDay(blocks, tz);
   return `${COACH_VOICE}
 
 ---
@@ -253,10 +257,11 @@ export function buildReviewPrompt(
   profile: Profile | null,
   blocks: Block[],
   weekday: number | null = null,
+  tz: string = "UTC",
 ): string {
   const tone = profile?.ai_tone ?? "gentle";
   const summary = summarizeByCategory(blocks);
-  const timeline = summarizeTimeline(blocks);
+  const timeline = summarizeTimeline(blocks, tz);
   const rest = weekday !== null ? restDayContext(profile, weekday) : "";
 
   return `${COACH_VOICE}
