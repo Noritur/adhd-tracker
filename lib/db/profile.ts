@@ -16,6 +16,7 @@ export type Profile = {
   evening_review_enabled: boolean;
   rest_days: number[]; // 0=Sun..6=Sat. Default [6,0].
   last_proactive_at: string | null;
+  last_morning_nudge_at: string | null;
   created_at: string;
 };
 

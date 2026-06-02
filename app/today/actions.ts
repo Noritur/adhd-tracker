@@ -23,6 +23,7 @@ import { formatTime, timeStringToMin } from "@/lib/time/slots";
 import { generatePlan } from "@/lib/ai/planner";
 import { generateReschedule } from "@/lib/ai/reschedule";
 import { applyPlanBlocks } from "@/lib/ai/apply-plan";
+import { invalidateInsightsCache } from "@/lib/ai/cache";
 import type {
   ExistingBlockLite,
   RescheduleMoveItem,
@@ -130,6 +131,7 @@ export async function saveBlockAction(
     return { error: friendly };
   }
 
+  await invalidateInsightsCache(supabase, user.id);
   revalidatePath("/today");
   return {};
 }
@@ -205,6 +207,7 @@ export async function updateBlockTimesAction(
     return { error: friendly };
   }
 
+  await invalidateInsightsCache(supabase, user.id);
   revalidatePath("/today");
   return {};
 }
@@ -267,6 +270,7 @@ export async function generatePlanAction(
     logKey: "today.plan",
   });
 
+  await invalidateInsightsCache(supabase, user.id);
   revalidatePath("/today");
   return { ok: true, created, skipped, note: plan.note ?? null };
 }
@@ -446,6 +450,7 @@ export async function rescheduleAction(
     }
   }
 
+  await invalidateInsightsCache(supabase, user.id);
   revalidatePath("/today");
   return { ok: true, moved, dropped, note: result.note ?? null };
 }
@@ -475,6 +480,7 @@ export async function setBlockMoodAction(formData: FormData): Promise<void> {
     );
   }
 
+  await invalidateInsightsCache(supabase, user.id);
   revalidatePath("/today");
 }
 
@@ -583,6 +589,7 @@ export async function rebuildDayAction(
     logKey: "today.rebuild",
   });
 
+  await invalidateInsightsCache(supabase, user.id);
   revalidatePath("/today");
   return { ok: true, deleted, created, skipped, note: plan.note ?? null };
 }
@@ -609,5 +616,6 @@ export async function deleteBlockAction(formData: FormData): Promise<void> {
     );
   }
 
+  await invalidateInsightsCache(supabase, user.id);
   revalidatePath("/today");
 }

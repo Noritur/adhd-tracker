@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { upsertProfile, type AiTone, type ProfilePatch } from "@/lib/db/profile";
+import { invalidateInsightsCache } from "@/lib/ai/cache";
 
 export type UpdateProfileState = { ok: boolean; error?: string };
 
@@ -90,6 +91,9 @@ export async function updateProfileAction(
     return { ok: false, error: msg };
   }
 
+  // Profile fields (timezone, tone, rest_days, work hours) feed every
+  // AI prompt; bust the insight cache so coaching reflects the change.
+  await invalidateInsightsCache(supabase, user.id);
   revalidatePath("/settings");
   revalidatePath("/today");
   revalidatePath("/week");

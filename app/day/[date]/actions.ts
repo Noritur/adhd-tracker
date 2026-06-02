@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createBlock, getBlocksForDate } from "@/lib/db/blocks";
 import { getProfile, profileTimezone } from "@/lib/db/profile";
 import { generateRetroFill } from "@/lib/ai/retro-fill";
+import { invalidateInsightsCache } from "@/lib/ai/cache";
 import { getYMDInTZ, localDateTimeToUTC } from "@/lib/time/tz";
 import { timeStringToMin, formatTime, MIN_BLOCK_MIN } from "@/lib/time/slots";
 import {
@@ -173,6 +174,9 @@ export async function retroFillAction(
     }
   }
 
+  // Retro-fill changes blocks visible in week-scope insights; bust the
+  // cache so the next /week view doesn't show pre-fill coaching.
+  await invalidateInsightsCache(supabase, user.id);
   revalidatePath(`/day/${ymd}`);
   revalidatePath("/week");
   return { ok: true, created, skipped, note: result.note ?? null };
