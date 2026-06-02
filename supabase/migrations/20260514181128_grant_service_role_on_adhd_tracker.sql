@@ -1,0 +1,5 @@
+GRANT USAGE ON SCHEMA adhd_tracker TO service_role;
+GRANT ALL ON ALL TABLES IN SCHEMA adhd_tracker TO service_role;
+GRANT ALL ON ALL SEQUENCES IN SCHEMA adhd_tracker TO service_role;
+ALTER DEFAULT PRIVILEGES IN SCHEMA adhd_tracker GRANT ALL ON TABLES TO service_role;
+ALTER DEFAULT PRIVILEGES IN SCHEMA adhd_tracker GRANT ALL ON SEQUENCES TO service_role;

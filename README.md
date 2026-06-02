@@ -19,7 +19,7 @@ AI-коуч для людей з ADHD-патерном, який живе у т�
 
 ## Що робить
 
-Веб-додаток з вертикальним таймлайном дня (drag-and-drop, 1px = 1 хвилина) і п'ятьма AI-точками взаємодії:
+Веб-додаток з вертикальним таймлайном дня (drag-and-drop, 1px = 1 хвилина) і шістьма AI-точками взаємодії:
 
 **Timeline CRUD** -- tap створює блок, drag-to-move і drag-to-resize з 15-хв snap. Overlap protection на рівні DB (exclusion constraint) і клієнта. 8 категорій з кольоровою палітрою.
 
@@ -29,7 +29,15 @@ AI-коуч для людей з ADHD-патерном, який живе у т�
 
 **Adaptive reschedule** -- натискаєш "план зламався", AI бере всі блоки після поточного часу, перепаковує на залишок дня з коментарем що не влізло. keep/toMove split, focus-правила re-validated server-side.
 
-**Proactive coaching push** -- кожну хвилину cron перевіряє блоки: якщо два "болото" підряд або два focus без перерви, AI генерує one-liner пінок і надсилає Web Push на телефон. Cooldown 1/день.
+**Rebuild day** -- "забудь план, починаємо з нуля". Видаляє всі майбутні блоки сьогодні (а не всю tomorrow!) ATOMIC: тільки після успіху AI. Якщо AI впав → твій день недоторканий.
+
+**Retro fill** -- пропустив день? Відкрий `/day/2025-05-31`, опиши текстом, AI реконструює блоки минулого дня з focus-правилами і TZ-aware часом.
+
+**Proactive coaching push** -- кожну хвилину cron перевіряє блоки: якщо два "болото" підряд або два focus без перерви, AI генерує one-liner пінок з content-safety фільтром і надсилає Web Push на телефон. Atomic claim перед AI-викликом — race-safe проти duplicate cron firings.
+
+**Word of the week** -- episodic-memory anchor: у п'ятницю AI шле push "яке слово цього тижня?". Зберігається один short phrase per (user, week), показується hero-текстом при перегляді минулих тижнів.
+
+**Rest days** -- вибираєш у `/settings` які дні тижня — вихідні. У ці дні AI tone адаптується: не тисне на продуктивність, не нагнітає "де твої фокус-блоки?", вечірнє ревью фокусується на відновленні.
 
 **Evening review** -- Vercel Cron о 19:00 UTC, AI пише summary дня + рекомендацію на завтра, шле push-нотифікацію з прев'ю.
 
@@ -78,7 +86,10 @@ AI SDK `generateObject` з zod-схемами для типобезпечног�
 | Morning planner | `{ blocks: [{ start, end, category, label }], note }` | `generateObject` |
 | Evening review | `{ summary, recommendation }` | `generateObject` |
 | Adaptive reschedule | `{ blocks: [{ ref, start, end, drop }], note }` | `generateObject` |
-| Proactive nudge | plain text (one-liner) | `generateText` |
+| Retro fill (past day) | same shape as planner | `generateObject` |
+| Proactive nudge | `{ line: z.string().max(140) }` + HARM_BLOCKLIST + canned fallback | `generateObject` |
+
+Fallback chain (`gemini-2.5-flash` → `flash-lite` → `2.0-flash`) and log shape (`level/msg/model/error`) extracted into single `runWithFallback<T>({ schema, prompt, logKey, logContext })` helper used by all six touchpoints — one source of truth.
 
 ### Proactive coaching loop
 
@@ -96,15 +107,18 @@ cron-job.org (every 1 min)
     +-- query: last 2 completed blocks
             -> swamp_streak? (2x mood=swamp)
             -> focus_no_break? (2x focus, <15min gap)
-                -> AI generateText -> one-liner nudge -> Web Push
-                -> set profiles.last_proactive_at (cooldown 1/day)
+                -> atomic claim profiles.last_proactive_at (race-safe gate)
+                -> AI generateObject -> one-liner nudge (140-char, content-filtered)
+                -> Web Push (canned fallback if blocklist hit)
 ```
+
+Block-started / block-ending pushes use the same pattern: atomic claim on `time_blocks.notified_*_at` *before* sending so two overlapping cron invocations can't both fire the push. Loser of the race gets `[]` from the UPDATE and skips cleanly.
 
 Vercel Hobby plan = daily cron only. Для хвилинної гранулярності використовується cron-job.org (free tier, external HTTP POST). Це звичайний function invocation, не Vercel Cron -- Hobby-ліміт не зачіпається. Trade-off: залежність від зовнішнього сервісу, free tier призупиняє job при non-2xx.
 
 ### Cache strategy
 
-Insights cache в `adhd_tracker.insights_cache` з 2-годинним TTL. Cache key: `(user_id, scope, for_date)`. На stale -- AI generation -> INSERT (delete-then-insert для idempotency через unique constraint).
+Insights cache в `adhd_tracker.insights_cache` з 2-годинним TTL. Cache key: `(user_id, scope, for_date)`. На stale → AI generation → upsert через `onConflict: "user_id,scope,for_date"` (race-safe). Cache явно invalidate-иться з усіх write-шляхів (block CRUD, mood, retro-fill, profile-update) — без цього юзер бачив би до 2h pre-write coaching попри revalidatePath.
 
 ---
 
@@ -208,20 +222,20 @@ git clone https://github.com/Noritur/adhd-tracker.git
 cd adhd-tracker
 pnpm install
 
-# .env.local (see .env.example)
+# .env.local (see .env.example for full list)
 # NEXT_PUBLIC_SUPABASE_URL=...
 # NEXT_PUBLIC_SUPABASE_ANON_KEY=...
 # SUPABASE_SERVICE_ROLE_KEY=...
 # GOOGLE_GENERATIVE_AI_API_KEY=...
 # CRON_SECRET=...
-# VAPID_PUBLIC_KEY=...
+# NEXT_PUBLIC_VAPID_PUBLIC_KEY=...
 # VAPID_PRIVATE_KEY=...
 # VAPID_SUBJECT=mailto:...
 
 pnpm dev
 ```
 
-Supabase: потрібен проєкт з exposed schema `adhd_tracker`, custom SMTP для magic link (Supabase default = 4 emails/hour).
+Supabase: потрібен проєкт з exposed schema `adhd_tracker`, custom SMTP для magic link (Supabase default = 4 emails/hour). Schema, RLS policies, grants, trigger та btree_gist exclusion constraint версіонуються у `supabase/migrations/` — `supabase db push` після `supabase link` накатує все на чистий проєкт.
 
 ---
 
@@ -250,9 +264,13 @@ Supabase: потрібен проєкт з exposed schema `adhd_tracker`, custom
 
 ## Stats
 
-- 9 днів розробки (~2-3 год/день)
-- 65 source files, 23 commits
-- 5 AI touchpoints, 3-model fallback chain
+- 10 днів розробки (~2-3 год/день)
+- 6 AI touchpoints (planner, reschedule, insights, review, retro-fill, coach-nudge), 3-model Gemini fallback chain
+- `runWithFallback` + `applyPlanBlocks` helpers — 5 files share one chain implementation, 2 actions share one insert implementation
+- Anti-burnout focus rules (50min cap + 15min gap) enforced via `validateFocusBlock` across manual edit / drag-resize / planner / reschedule / retro-fill
+- Atomic push idempotency (claim-before-send for block start/end + coach + morning nudge)
+- TZ-aware everywhere: prompts, timeline, NowLine, week buckets — all honor `profiles.timezone`, not server clock
+- Insights cache bust on every write path (no 2h stale-coaching window after mood/block/profile changes)
 - 16 задокументованих blockers (Next.js 16, Supabase custom schema, PWA auth, npm bugs)
 - Повністю self-dogfooded: проєкт будувався для власного ADHD-патерну
 

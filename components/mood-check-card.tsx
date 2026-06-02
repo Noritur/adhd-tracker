@@ -21,6 +21,10 @@ export async function MoodCheckCard() {
 
   const profile = await getProfile(supabase, user.id);
   const tz = profileTimezone(profile);
+  // Server Component renders per-request; capturing "now" once is the
+  // correct pattern even though Date.now is impure in React's strict sense.
+  // biome-ignore lint/correctness/noUnusedVariables: used below
+  // eslint-disable-next-line react-hooks/purity
   const now = Date.now();
   const blocks = await getBlocksForDate(supabase, user.id, new Date(now), tz);
 

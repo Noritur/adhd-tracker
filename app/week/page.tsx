@@ -6,7 +6,6 @@ import { getProfile, profileTimezone } from "@/lib/db/profile";
 import {
   getYMDInTZ,
   localWeekBoundsUTC,
-  localMidnightUTC,
 } from "@/lib/time/tz";
 import { SummaryTiles } from "@/components/summary-tiles";
 import { WeeklyHeatmap } from "@/components/weekly-heatmap";

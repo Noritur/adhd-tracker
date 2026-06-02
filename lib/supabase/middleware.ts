@@ -41,7 +41,7 @@ export async function updateSession(request: NextRequest) {
     pathname.startsWith("/sign-in") || pathname.startsWith("/auth");
   const isSetPassword = pathname.startsWith("/set-password");
   // API routes manage their own auth (cron Bearer for /api/review,
-  // user-session 401 for /api/insights). Skip page-style redirects here.
+  // /api/morning-nudge, /api/block-tick). Skip page-style redirects here.
   const isApiRoute = pathname.startsWith("/api/");
   // PWA assets must be fetchable without a session — browsers and OSes
   // load them before/independent of login state.
