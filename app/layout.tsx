@@ -33,7 +33,8 @@ export const viewport: Viewport = {
   themeColor: "#0B1014",
   width: "device-width",
   initialScale: 1,
-  maximumScale: 1,
+  // No maximumScale — never block pinch-zoom. Accessibility > "fixed
+  // app feel". A user with vision needs must be able to enlarge text.
   viewportFit: "cover",
 };
 
