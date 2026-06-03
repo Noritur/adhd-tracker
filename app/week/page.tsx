@@ -142,7 +142,11 @@ export default async function WeekPage({ searchParams }: Props) {
         />
         <SummaryTiles blocks={blocks} />
         <Suspense fallback={<InsightsCardSkeleton />}>
-          <InsightsCard scope="week" />
+          <InsightsCard
+            scope="week"
+            weekStart={weekStart}
+            weekEnd={weekEnd}
+          />
         </Suspense>
         <WeeklyHeatmap blocks={blocks} weekStart={weekStart} tz={tz} />
         {blocks.length === 0 && (

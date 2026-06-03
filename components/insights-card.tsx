@@ -5,13 +5,26 @@ import { getProfile, profileTimezone } from "@/lib/db/profile";
 import {
   getYMDInTZ,
   getWeekdayInTZ,
-  localDayBoundsUTC,
+  localWeekBoundsUTC,
 } from "@/lib/time/tz";
 import { generateInsight } from "@/lib/ai/insights";
 import { getOrGenerateInsight } from "@/lib/ai/cache";
 import type { InsightScope } from "@/lib/ai/prompts";
 
-export async function InsightsCard({ scope }: { scope: InsightScope }) {
+type Props = {
+  scope: InsightScope;
+  /**
+   * For `scope="week"`: the calendar week (Mon-Sun in user TZ) to insight
+   * over. When viewing `/week?week=<past>`, the page passes the archive
+   * week's bounds so the AI insight matches what the heatmap shows.
+   * If omitted, falls back to the current calendar week.
+   * For `scope="today"`, ignored.
+   */
+  weekStart?: Date;
+  weekEnd?: Date;
+};
+
+export async function InsightsCard({ scope, weekStart, weekEnd }: Props) {
   const supabase = await createClient();
   const {
     data: { user },
@@ -21,7 +34,20 @@ export async function InsightsCard({ scope }: { scope: InsightScope }) {
   const profile = await getProfile(supabase, user.id);
   const tz = profileTimezone(profile);
   const now = new Date();
-  const forDate = getYMDInTZ(now, tz);
+
+  // Cache key depends on scope:
+  //   today → today's YMD
+  //   week  → Monday YMD of the target week (so archive weeks each get
+  //           their own cache row instead of overwriting "current week")
+  let forDate: string;
+  if (scope === "today") {
+    forDate = getYMDInTZ(now, tz);
+  } else {
+    const { start: ws } = weekStart && weekEnd
+      ? { start: weekStart }
+      : localWeekBoundsUTC(now, tz);
+    forDate = getYMDInTZ(ws, tz);
+  }
 
   const insight = await getOrGenerateInsight(
     supabase,
@@ -33,10 +59,16 @@ export async function InsightsCard({ scope }: { scope: InsightScope }) {
       if (scope === "today") {
         blocks = await getBlocksForDate(supabase, user.id, now, tz);
       } else {
-        // Sliding 7-day window ending at end-of-today in user's tz.
-        const { end } = localDayBoundsUTC(now, tz);
-        const start = new Date(end.getTime() - 7 * 24 * 60 * 60 * 1000);
-        blocks = await getBlocksForRange(supabase, user.id, start, end);
+        // Use passed bounds for archive weeks, current calendar week otherwise.
+        const bounds = weekStart && weekEnd
+          ? { start: weekStart, end: weekEnd }
+          : localWeekBoundsUTC(now, tz);
+        blocks = await getBlocksForRange(
+          supabase,
+          user.id,
+          bounds.start,
+          bounds.end,
+        );
       }
       // Rest-day awareness only makes sense for "today" scope (single
       // weekday). "week" spans both rest + work days, leave null so the

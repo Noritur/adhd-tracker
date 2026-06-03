@@ -154,48 +154,53 @@ app/
   week/            -- weekly heatmap + summary tiles
   settings/        -- profile, work hours, AI tone, push toggle
   api/
-    insights/      -- GET, cached AI insights (today|week scope)
     review/        -- Vercel Cron, evening review for all users
-    morning-nudge/ -- Vercel Cron, morning push
+    morning-nudge/ -- Vercel Cron, morning push (per-day atomic claim)
     block-tick/    -- external cron, minute-level reminders + coaching
+  day/[date]/      -- past-day archive + retro-fill (AI reconstructs missed day)
 
 lib/
   ai/
     master-prompt  -- coach persona (shared across all AI calls)
-    prompts        -- prompt builders (insight, plan, review, reschedule)
-    insights       -- generateObject + fallback chain
+    prompts        -- prompt builders (insight, plan, review, reschedule) + rest-day context
+    model-chain    -- runWithFallback<T>(schema, prompt, logKey) — single source for fallback + logging
+    apply-plan     -- applyPlanBlocks(): shared planner+rebuild insert logic
+    insights       -- thin wrapper, generateObject via runWithFallback
     planner        -- morning plan generation
     review         -- evening review generation
     reschedule     -- adaptive reschedule
-    coach-nudge    -- proactive one-liner generation
-    cache          -- insights cache (2h TTL)
+    retro-fill     -- past-day reconstruction from text
+    coach-nudge    -- proactive one-liner with HARM_BLOCKLIST + canned fallback
+    cache          -- insights cache (2h TTL, upsert + invalidate)
   rules/
-    focus-limits   -- 50min cap + 15min gap validation
+    focus-limits   -- 50min cap + 15min gap validation (shared everywhere)
   db/
-    blocks         -- time_blocks CRUD
-    profile        -- user profile (TZ, work hours, AI tone)
+    blocks         -- time_blocks CRUD + deleteFutureBlocksInDay (today-bounded)
+    profile        -- user profile (TZ, work hours, AI tone, rest_days, idempotency timestamps)
     reviews        -- evening review storage
-    push-subs      -- Web Push subscriptions
+    week-words     -- episodic-memory anchor per week
+    push-subscriptions -- Web Push subscriptions, auto-clean 404/410
   push/
     send           -- VAPID push delivery
   time/
-    tz             -- per-user timezone helpers
-    slots          -- 15-min snap math, formatting
+    tz             -- per-user timezone helpers (Intl.DateTimeFormat-based)
+    slots          -- 15-min snap math, formatting, TZ-aware iso<->minutes helpers
   supabase/
     client / server / admin / middleware
 ```
 
 ## Data model
 
-5 таблиць у schema `adhd_tracker`:
+6 таблиць у schema `adhd_tracker`:
 
-- **profiles** -- timezone, work_hours, ai_tone (firm/gentle), evening_review config, last_proactive_at
+- **profiles** -- timezone, work_hours, ai_tone (firm/gentle), evening_review config, `rest_days int[]` (weekday indices treated as days off), `last_proactive_at` + `last_morning_nudge_at` (per-day atomic-claim idempotency).
 - **time_blocks** -- user_id, start_at, end_at, category, label, mood (fire/ok/swamp), notify flags. Exclusion constraint через `btree_gist` для overlap protection.
-- **insights_cache** -- per-user per-scope per-date, 2h TTL
+- **insights_cache** -- per-user per-scope per-date, 2h TTL. Has SELECT / INSERT / UPDATE / DELETE policies so user-session client can upsert + invalidate.
 - **reviews** -- evening review summary + recommendation, user_response (ok/skip/not_today)
-- **push_subscriptions** -- Web Push endpoints, unique on endpoint
+- **week_words** -- one short phrase per (user, week_start) — episodic-memory anchor displayed when browsing past weeks.
+- **push_subscriptions** -- Web Push endpoints, unique on endpoint, auto-cleaned on 404/410.
 
-RLS на всіх таблицях: `auth.uid() = user_id`. Service-role client для cron routes.
+RLS на всіх таблицях: `auth.uid() = user_id`. Service-role client для cron routes. `handle_new_user()` trigger має EXECUTE revoked from PUBLIC (тільки auth trigger).
 
 ---
 
