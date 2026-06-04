@@ -13,7 +13,11 @@ import { requireCronAuth } from "@/lib/auth/cron";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-const WINDOW_MIN = 60;
+// 30-min window centered on the user's `work_hours_start`. We're
+// invoked HOURLY by cron-job.org. Per-day idempotency claim on
+// profiles.last_morning_nudge_at dedupes adjacent-hour matches.
+// See /api/review for the full reasoning.
+const WINDOW_MIN = 30;
 
 const NUDGE_MESSAGES = [
   "доброго ранку. скажи що сьогодні треба — розкидаю по таймлайну.",

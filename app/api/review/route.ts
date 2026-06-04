@@ -18,7 +18,14 @@ import { requireCronAuth } from "@/lib/auth/cron";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-const WINDOW_MIN = 60;
+// 30-min window centered on the user's `evening_review_at` time.
+// We're invoked HOURLY by cron-job.org (not Vercel daily cron — Vercel
+// Hobby ran once at 19:00 UTC which only ever matched Europe; non-EU
+// users were promised configurable review times but never got them).
+// With hourly invocation + 30-min window, a user's target HH:MM gets
+// matched in the right hour and skipped in adjacent hours via the
+// existing per-(user, date) review uniqueness constraint.
+const WINDOW_MIN = 30;
 
 async function handler(request: Request): Promise<Response> {
   const authFail = requireCronAuth(request);

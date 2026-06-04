@@ -114,7 +114,23 @@ cron-job.org (every 1 min)
 
 Block-started / block-ending pushes use the same pattern: atomic claim on `time_blocks.notified_*_at` *before* sending so two overlapping cron invocations can't both fire the push. Loser of the race gets `[]` from the UPDATE and skips cleanly.
 
-Vercel Hobby plan = daily cron only. Для хвилинної гранулярності використовується cron-job.org (free tier, external HTTP POST). Це звичайний function invocation, не Vercel Cron -- Hobby-ліміт не зачіпається. Trade-off: залежність від зовнішнього сервісу, free tier призупиняє job при non-2xx.
+### Cron schedule (all external)
+
+| Route | Schedule | Why external |
+|---|---|---|
+| `/api/block-tick` | every 1 min | Vercel Hobby = daily cron only; need minute-level for block reminders |
+| `/api/morning-nudge` | every 1 hour at `:00` | Daily cron at fixed UTC time can only honor one timezone. Hourly + ±30min user-time window covers every IANA TZ the settings form exposes |
+| `/api/review` | every 1 hour at `:00` | Same: daily 19:00 UTC was unreachable for non-Europe users despite a configurable `evening_review_at` setting |
+
+All three jobs are configured at [cron-job.org](https://cron-job.org) (free, external HTTP POST). Each is a regular function invocation — Vercel cron quota isn't touched. Idempotency:
+
+- `block-tick` → atomic claim on `time_blocks.notified_*_at` and `profiles.last_proactive_at` (see "Proactive coaching loop" above)
+- `morning-nudge` → atomic claim on `profiles.last_morning_nudge_at` (per-day local)
+- `review` → uniqueness on `(user_id, for_date)` in `reviews` table
+
+So even if cron-job.org retries on transient failure or two ticks land in the same minute, no user gets duplicate review/nudge/coach. Trade-off: dependency on external service, free tier suspends jobs on non-2xx responses.
+
+`vercel.json` no longer declares any crons.
 
 ### Cache strategy
 
