@@ -191,7 +191,7 @@ export function SettingsForm({
             </button>
           </div>
         </Row>
-        <Row label="вечірнє ревью">
+        <Row label="AI сповіщення">
           <input
             type="hidden"
             name="evening_review_enabled"
@@ -212,7 +212,10 @@ export function SettingsForm({
             />
           </button>
         </Row>
-        <Row label="час ревью">
+        <p className="text-[11px] text-muted-foreground/70 -mt-1 px-1">
+          ранковий план, нагадування про блоки, проактивний коуч і вечірнє ревью. вимкни щоб ніщо не приходило само.
+        </p>
+        <Row label="час вечірнього ревью">
           <input
             type="time"
             name="evening_review_at"
