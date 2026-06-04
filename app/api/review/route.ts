@@ -13,6 +13,7 @@ import { timeStringToMin } from "@/lib/time/slots";
 import { sendToUser } from "@/lib/push/send";
 import { getWeekWord } from "@/lib/db/week-words";
 import type { Profile } from "@/lib/db/profile";
+import { requireCronAuth } from "@/lib/auth/cron";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -20,10 +21,8 @@ export const maxDuration = 60;
 const WINDOW_MIN = 60;
 
 async function handler(request: Request): Promise<Response> {
-  const auth = request.headers.get("authorization");
-  if (auth !== `Bearer ${process.env.CRON_SECRET}`) {
-    return new Response("unauthorized", { status: 401 });
-  }
+  const authFail = requireCronAuth(request);
+  if (authFail) return authFail;
 
   const admin = createAdminClient();
   const { data: profiles, error } = await admin

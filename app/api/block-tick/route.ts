@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { requireCronAuth } from "@/lib/auth/cron";
 import { getBlocksForTick, type TickBlock } from "@/lib/db/blocks";
 import { getSubscriptionsForUser } from "@/lib/db/push-subscriptions";
 import { sendToSubscription } from "@/lib/push/send";
@@ -60,10 +61,8 @@ function blockName(label: string | null, category: string): string {
 }
 
 async function handler(request: Request): Promise<Response> {
-  const auth = request.headers.get("authorization");
-  if (auth !== `Bearer ${process.env.CRON_SECRET}`) {
-    return new Response("unauthorized", { status: 401 });
-  }
+  const authFail = requireCronAuth(request);
+  if (authFail) return authFail;
 
   const admin = createAdminClient();
   const { data: profiles, error } = await admin

@@ -5,7 +5,9 @@ import { getBlocksForRange } from "@/lib/db/blocks";
 import { getProfile, profileTimezone } from "@/lib/db/profile";
 import {
   getYMDInTZ,
+  isValidYMD,
   localWeekBoundsUTC,
+  ymdToProbeUTC,
 } from "@/lib/time/tz";
 import { SummaryTiles } from "@/components/summary-tiles";
 import { WeeklyHeatmap } from "@/components/weekly-heatmap";
@@ -43,14 +45,6 @@ function formatRangeFromYMDs(startYMD: string, endYMD: string): string {
   return `${sd} ${MONTHS[sm - 1]} — ${ed} ${MONTHS[em - 1]}`;
 }
 
-/** Parse "YYYY-MM-DD" into a UTC Date, or null if invalid. */
-function parseYMD(s: string | undefined): Date | null {
-  if (!s || !/^\d{4}-\d{2}-\d{2}$/.test(s)) return null;
-  const [y, m, d] = s.split("-").map(Number);
-  const dt = new Date(Date.UTC(y, m - 1, d));
-  if (isNaN(dt.getTime())) return null;
-  return dt;
-}
 
 /** Shift a YYYY-MM-DD by N days. */
 function shiftYMD(ymd: string, days: number): string {
@@ -77,8 +71,15 @@ export default async function WeekPage({ searchParams }: Props) {
   const tz = profileTimezone(profile);
   const now = new Date();
 
-  // Determine which week to show.
-  const targetDate = parseYMD(weekParam) ?? now;
+  // Determine which week to show. If weekParam is malformed or rolls
+  // over (2026-02-31), fall back to current week. ymdToProbeUTC lands
+  // at noon-local so localWeekBoundsUTC computes the right week for
+  // every offset (not the previous local week in NY/LA etc).
+  const probedDate =
+    weekParam && isValidYMD(weekParam)
+      ? ymdToProbeUTC(weekParam, tz)
+      : null;
+  const targetDate = probedDate ?? now;
   const { start: weekStart, end: weekEnd } = localWeekBoundsUTC(targetDate, tz);
 
   // Current week bounds for comparison.

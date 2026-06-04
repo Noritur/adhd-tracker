@@ -6,7 +6,12 @@ import { createBlock, getBlocksForDate } from "@/lib/db/blocks";
 import { getProfile, profileTimezone } from "@/lib/db/profile";
 import { generateRetroFill } from "@/lib/ai/retro-fill";
 import { invalidateInsightsCache } from "@/lib/ai/cache";
-import { getYMDInTZ, localDateTimeToUTC } from "@/lib/time/tz";
+import {
+  getYMDInTZ,
+  isValidYMD,
+  localDateTimeToUTC,
+  ymdToProbeUTC,
+} from "@/lib/time/tz";
 import { timeStringToMin, formatTime, MIN_BLOCK_MIN } from "@/lib/time/slots";
 import {
   isFocus,
@@ -35,7 +40,8 @@ export async function retroFillAction(
   if (userText.length > 2000) {
     return { ok: false, error: "коротше будь ласка (макс 2000 символів)" };
   }
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(ymd)) {
+  // Strict YMD check (format + calendar validity; rejects 2026-02-31).
+  if (!isValidYMD(ymd)) {
     return { ok: false, error: "invalid date" };
   }
 
@@ -50,17 +56,18 @@ export async function retroFillAction(
 
   // Reject today/future in user's local timezone. YMD strings compare
   // lexicographically as ISO dates, so direct >= works.
-  // Previous version used setUTCHours(0,0,0,0) which mis-classifies
-  // late-night Madrid blocks etc. around UTC midnight.
   const todayYMD = getYMDInTZ(new Date(), tz);
   if (ymd >= todayYMD) {
     return { ok: false, error: "retro-fill тільки для минулих днів" };
   }
 
-  // Build target Date for getBlocksForDate (any UTC instant inside the
-  // local day works; localDayBoundsUTC inside the helper normalizes).
-  const [y, m, d] = ymd.split("-").map(Number);
-  const targetDate = new Date(Date.UTC(y, m - 1, d));
+  // TZ-safe probe (noon-local) — lands inside the local day for every
+  // offset, unlike `Date.UTC(y,m-1,d)` which is the previous local day
+  // in negative-offset TZ.
+  const targetDate = ymdToProbeUTC(ymd, tz);
+  if (!targetDate) {
+    return { ok: false, error: "invalid date" };
+  }
 
   // Check if day already has blocks.
   const existing = await getBlocksForDate(supabase, user.id, targetDate, tz);

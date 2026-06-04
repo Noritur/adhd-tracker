@@ -4,7 +4,12 @@ import { ChevronLeft } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { getBlocksForDate } from "@/lib/db/blocks";
 import { getProfile, profileTimezone } from "@/lib/db/profile";
-import { getYMDInTZ } from "@/lib/time/tz";
+import {
+  getYMDInTZ,
+  getWeekdayInTZ,
+  isValidYMD,
+  ymdToProbeUTC,
+} from "@/lib/time/tz";
 import { SummaryTiles } from "@/components/summary-tiles";
 import { BottomNav } from "@/components/bottom-nav";
 import { RetroFillCard } from "@/components/retro-fill-card";
@@ -26,23 +31,14 @@ const MONTHS = [
   "грудня",
 ];
 
-/** Parse "YYYY-MM-DD" into a UTC Date, or null if invalid. */
-function parseYMD(s: string): Date | null {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return null;
-  const [y, m, d] = s.split("-").map(Number);
-  const dt = new Date(Date.UTC(y, m - 1, d));
-  if (isNaN(dt.getTime())) return null;
-  return dt;
-}
-
 type Props = {
   params: Promise<{ date: string }>;
 };
 
 export default async function DayPage({ params }: Props) {
   const { date } = await params;
-  const targetDate = parseYMD(date);
-  if (!targetDate) notFound();
+  // Fast format/calendar check before auth so 404 stays cheap.
+  if (!isValidYMD(date)) notFound();
 
   const supabase = await createClient();
   const {
@@ -53,21 +49,28 @@ export default async function DayPage({ params }: Props) {
   const profile = await getProfile(supabase, user.id);
   const tz = profileTimezone(profile);
 
+  // Now that we have tz, materialize the date into a UTC probe that
+  // actually lands inside the user's local day (noon-local). Previous
+  // version used UTC midnight which is the PREVIOUS local day for every
+  // negative-offset timezone — including NY/LA/Chicago/Mexico/Sao_Paulo
+  // that the settings form actually offers.
+  const targetDate = ymdToProbeUTC(date, tz);
+  if (!targetDate) notFound();
+
   // If this is today, redirect to /today.
   const todayYMD = getYMDInTZ(new Date(), tz);
   if (date === todayYMD) redirect("/today");
 
-  // If this is a future date, redirect to /today.
-  const [y, m, d] = date.split("-").map(Number);
-  const todayParts = todayYMD.split("-").map(Number);
-  const targetNum = y * 10000 + m * 100 + d;
-  const todayNum =
-    todayParts[0] * 10000 + todayParts[1] * 100 + todayParts[2];
-  if (targetNum >= todayNum) redirect("/today");
+  // Future date → also redirect. String comparison on YYYY-MM-DD is
+  // lexicographic = chronological for ISO dates.
+  if (date >= todayYMD) redirect("/today");
 
   const blocks = await getBlocksForDate(supabase, user.id, targetDate, tz);
 
-  const weekdayIdx = targetDate.getUTCDay();
+  // Local weekday + day-of-month derived from the user-tz probe, not
+  // raw `getUTCDay()` which would be wrong by ±1 day in negative TZ.
+  const weekdayIdx = getWeekdayInTZ(targetDate, tz);
+  const [, m, d] = date.split("-").map(Number);
   const dateLabel = `${WEEKDAYS_SHORT[weekdayIdx]}, ${d} ${MONTHS[m - 1]}`;
 
   return (

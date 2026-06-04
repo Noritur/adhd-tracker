@@ -131,3 +131,42 @@ export function localDateTimeToUTC(
   const offsetMin = getTZOffsetMinutes(new Date(naiveUTC), tz);
   return new Date(naiveUTC - offsetMin * 60_000);
 }
+
+/**
+ * Strict YMD format + calendar validity check.
+ * Rejects bad format, out-of-range month/day, AND date roll-overs like
+ * "2026-02-31" (which `new Date(Date.UTC(...))` would silently normalize
+ * to March 3).
+ */
+export function isValidYMD(ymd: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(ymd)) return false;
+  const [y, m, d] = ymd.split("-").map(Number);
+  if (m < 1 || m > 12) return false;
+  if (d < 1 || d > 31) return false;
+  // Round-trip check rejects 2026-02-31 etc.
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  return (
+    dt.getUTCFullYear() === y &&
+    dt.getUTCMonth() === m - 1 &&
+    dt.getUTCDate() === d
+  );
+}
+
+/**
+ * Parse YMD + tz into a UTC instant guaranteed to land INSIDE that local
+ * day in tz. Uses noon-local as the probe (12:00) so even ±14h offsets
+ * stay safely within the calendar day. Returns null on invalid/normalized
+ * YMD.
+ *
+ * Centralized so every route that maps a YMD path/search param into a
+ * Date — `/week?week=`, `/day/[date]`, retro-fill action — agrees on
+ * which calendar day the user meant. Without this, a route handler in
+ * the Madrid build that does `new Date(Date.UTC(y,m-1,d))` lands at
+ * UTC midnight, which is the PREVIOUS local day in America/New_York,
+ * Los_Angeles, Chicago, Mexico_City, Sao_Paulo — every negative-offset
+ * timezone the settings form actually exposes.
+ */
+export function ymdToProbeUTC(ymd: string, tz: string): Date | null {
+  if (!isValidYMD(ymd)) return null;
+  return localDateTimeToUTC(ymd, "12:00", tz);
+}
