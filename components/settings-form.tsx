@@ -101,7 +101,7 @@ export function SettingsForm({
           <select
             name="timezone"
             defaultValue={tz}
-            className="bg-transparent text-sm font-semibold text-right outline-none cursor-pointer max-w-[60%]"
+            className="appearance-none bg-transparent text-sm font-semibold text-right outline-none cursor-pointer max-w-[60%]"
           >
             {POPULAR_TIMEZONES.map((t) => (
               <option key={t} value={t}>
@@ -118,7 +118,7 @@ export function SettingsForm({
             type="time"
             name="work_hours_start"
             defaultValue={workStart}
-            className="bg-transparent text-sm font-semibold text-right outline-none tabular-nums"
+            className="appearance-none bg-transparent text-sm font-semibold text-right outline-none tabular-nums"
           />
         </Row>
         <Row label="закінчую">
@@ -126,7 +126,7 @@ export function SettingsForm({
             type="time"
             name="work_hours_end"
             defaultValue={workEnd}
-            className="bg-transparent text-sm font-semibold text-right outline-none tabular-nums"
+            className="appearance-none bg-transparent text-sm font-semibold text-right outline-none tabular-nums"
           />
         </Row>
         <input
@@ -221,7 +221,7 @@ export function SettingsForm({
             name="evening_review_at"
             defaultValue={reviewAt}
             disabled={!reviewEnabled}
-            className="bg-transparent text-sm font-semibold text-right outline-none tabular-nums disabled:opacity-40"
+            className="appearance-none bg-transparent text-sm font-semibold text-right outline-none tabular-nums disabled:opacity-40"
           />
         </Row>
       </Section>
@@ -229,7 +229,7 @@ export function SettingsForm({
       <button
         type="submit"
         disabled={isPending}
-        className="w-full bg-primary text-primary-foreground rounded-2xl p-4 text-base font-semibold disabled:opacity-50"
+        className="w-full bg-primary text-primary-foreground rounded-2xl h-[52px] flex items-center justify-center text-base font-semibold disabled:opacity-50"
       >
         {isPending ? "зберігаю..." : "зберегти"}
       </button>
@@ -262,7 +262,7 @@ function Row({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex items-center justify-between bg-card border border-border rounded-2xl p-4 gap-3">
+    <div className="flex items-center justify-between bg-card border border-border rounded-2xl min-h-[52px] px-4 gap-3">
       <span className="text-sm text-muted-foreground">{label}</span>
       {children}
     </div>

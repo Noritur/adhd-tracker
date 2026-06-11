@@ -75,7 +75,7 @@ export default async function DayPage({ params }: Props) {
 
   return (
     <main className="min-h-screen flex flex-col bg-background">
-      <header className="sticky top-0 z-40 bg-background/80 backdrop-blur border-b border-border/40">
+      <header className="sticky top-0 z-40 pt-[env(safe-area-inset-top)] bg-background/80 backdrop-blur border-b border-border/40">
         <div className="flex items-center gap-3 px-4 py-3">
           <Link
             href="/week"

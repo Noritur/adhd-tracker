@@ -204,7 +204,7 @@ function Row({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex items-center justify-between bg-card border border-border rounded-2xl p-4 gap-3">
+    <div className="flex items-center justify-between bg-card border border-border rounded-2xl min-h-[52px] px-4 gap-3">
       <span className="text-sm text-muted-foreground">{label}</span>
       {children}
     </div>

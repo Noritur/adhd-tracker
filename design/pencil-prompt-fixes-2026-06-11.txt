@@ -1,0 +1,66 @@
+Update the existing adhdtracker.pen file. Do NOT redesign the visual language — keep the
+current dark teal system exactly as is. Only apply the 3 changes below.
+
+DESIGN TOKENS (reuse, do not invent new ones):
+- bg #0B1014, card #131A20, text #ECF2F5, secondary #B0BDC4, eyebrow #7A8892
+- primary teal #5EEAD4, accent warm amber #FBBF24, destructive red (existing)
+- font Inter, radius 16 for cards/rows, screen 390x844, side margins 20
+- section eyebrow: 11px / 600 / letterSpacing 0.5 / #7A8892, uppercase
+
+TASK 1 — rebuild frame "ADHD 07 Settings" to match the real app structure,
+keeping the uniform row rhythm (every row: height 52, radius 16, padding 16,
+label left in #B0BDC4 14px, value right-aligned 14px/600 #ECF2F5, gap 8 between rows):
+
+  section "Я":
+    - row: "email" / value "n@tracker.app"
+    - row: "часовий пояс" / value "Europe/Madrid"
+  section "Робота":
+    - row: "починаю" / value "09:00"
+    - row: "закінчую" / value "18:00"
+    - card (exception, auto height): label "вихідні" + hint "у ці дні AI не тисне
+      на продуктивність" (11px secondary) + 7 weekday chips in one row
+      (пн вт ср чт пт сб нд), chip: flex-equal, height 36, full-round;
+      active = teal fill + dark text, inactive = muted
+  section "Тренер":
+    - row: "тон" / right side = segmented pill control "м'який | жорсткий",
+      total control height 28 so the row stays 52, active segment = card bg + shadow
+    - row: "AI сповіщення" / right side = toggle switch 44x24, on = teal
+    - hint text under row, 11px secondary: "ранковий план, нагадування про блоки,
+      проактивний коуч і вечірнє ревью."
+    - row: "час вечірнього ревью" / value "21:00"
+  section "Сповіщення":
+    - row: "push на цей пристрій" / toggle 44x24
+    - hint 11px: "на iOS — спочатку додай на головний екран, потім увімкни тут."
+  section "Акаунт":
+    - row: "вийти" in destructive red, log-out icon right
+  bottom: full-width primary button "зберегти", height 52, radius 16, teal fill,
+  dark text 16px/600
+
+  CRITICAL: every control (segmented, toggle, time value) must fit inside the
+  52px row — rows must all be exactly the same height and all right-side values
+  must sit on one vertical axis.
+
+TASK 2 — safe area on "ADHD 03 Today":
+  add an explicit status-bar safe zone: top 0..59 contains only the status bar
+  time, no app content. The header row (date pill + "вийти" pill) starts at
+  y=59 minimum. Add a thin annotation outside the frame: "header padding-top =
+  env(safe-area-inset-top) in PWA standalone". Check ADHD 05 Week and
+  ADHD 07 Settings headers respect the same zone.
+
+TASK 3 — new frame "ADHD 09 Mood card states" (390 width, auto height,
+  three stacked variants of the mood check card, each labeled with a small
+  caption above):
+  the card itself: card bg, radius 16, padding 16, amber left border 3px,
+  eyebrow "як пройшло" in amber 10px uppercase, subtitle "швидко познач — коуч
+  побачить твій ритм енергії" 14px secondary; inside — one block row:
+  block title "ранковий фокус" 14px/600 + "09:00 · код" 11px secondary on the
+  left, three 36x36 round emoji buttons on the right: 🔥 😐 🫠 on muted circles.
+
+  state 1 "default": as described.
+  state 2 "tapped (pending)": tapped 🔥 circle gets teal ring 2px + teal-tinted
+  fill, the other two emojis drop to 40% opacity; tiny spinner replaces nothing —
+  keep layout identical, no size jumps.
+  state 3 "saved": whole row at 50% opacity with a small teal check + text
+  "записав" 12px replacing the emoji group; card row visually on the way out.
+
+Do not touch any other frames. Keep all existing Ukrainian lowercase copy style.

@@ -3,14 +3,7 @@ import { getProfile, profileTimezone } from "@/lib/db/profile";
 import { getBlocksForDate } from "@/lib/db/blocks";
 import { CATEGORIES_BY_VALUE } from "@/lib/categories";
 import { getHHMMInTZ } from "@/lib/time/tz";
-import { setBlockMoodAction } from "@/app/today/actions";
-
-const MOODS: { value: "fire" | "ok" | "swamp"; emoji: string; label: string }[] =
-  [
-    { value: "fire", emoji: "🔥", label: "вогонь" },
-    { value: "ok", emoji: "😐", label: "норм" },
-    { value: "swamp", emoji: "🫠", label: "болото" },
-  ];
+import { MoodRow } from "@/components/mood-row";
 
 export async function MoodCheckCard() {
   const supabase = await createClient();
@@ -51,33 +44,12 @@ export async function MoodCheckCard() {
           const start = getHHMMInTZ(new Date(b.start_at), tz);
           const title = b.label?.trim() || cat?.label || "блок";
           return (
-            <div
+            <MoodRow
               key={b.id}
-              className="flex items-center justify-between gap-2 bg-background/40 rounded-xl p-2.5"
-            >
-              <div className="flex flex-col min-w-0">
-                <span className="text-sm font-semibold truncate">{title}</span>
-                <span className="text-[11px] text-muted-foreground tabular-nums">
-                  {start} · {cat?.label}
-                </span>
-              </div>
-              <div className="flex gap-1 flex-shrink-0">
-                {MOODS.map((m) => (
-                  <form key={m.value} action={setBlockMoodAction}>
-                    <input type="hidden" name="id" value={b.id} />
-                    <input type="hidden" name="mood" value={m.value} />
-                    <button
-                      type="submit"
-                      aria-label={m.label}
-                      title={m.label}
-                      className="w-9 h-9 rounded-full bg-muted/60 hover:bg-muted text-base flex items-center justify-center transition-colors active:scale-90"
-                    >
-                      {m.emoji}
-                    </button>
-                  </form>
-                ))}
-              </div>
-            </div>
+              blockId={b.id}
+              title={title}
+              meta={`${start} · ${cat?.label}`}
+            />
           );
         })}
       </div>

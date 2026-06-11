@@ -64,7 +64,7 @@ export default async function TodayPage() {
   return (
     <main className="min-h-screen flex flex-col bg-background">
       {/* Sticky header */}
-      <header className="sticky top-0 z-40 bg-background/80 backdrop-blur border-b border-border/40">
+      <header className="sticky top-0 z-40 pt-[env(safe-area-inset-top)] bg-background/80 backdrop-blur border-b border-border/40">
         <div className="flex items-center justify-between px-4 py-3 gap-3">
           <div className="flex items-center gap-2 bg-card border border-border rounded-full px-3 py-1.5 text-sm font-semibold">
             <span className="w-1.5 h-1.5 rounded-full bg-primary" />

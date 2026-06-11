@@ -115,7 +115,7 @@ export default async function WeekPage({ searchParams }: Props) {
 
   return (
     <main className="min-h-screen flex flex-col bg-background">
-      <header className="sticky top-0 z-40 bg-background/80 backdrop-blur border-b border-border/40">
+      <header className="sticky top-0 z-40 pt-[env(safe-area-inset-top)] bg-background/80 backdrop-blur border-b border-border/40">
         <div className="px-4 py-3">
           <WeekNav
             rangeLabel={rangeLabel}
