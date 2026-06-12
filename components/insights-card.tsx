@@ -82,7 +82,7 @@ export async function InsightsCard({ scope, weekStart, weekEnd }: Props) {
   if (!insight) return null;
 
   return (
-    <div className="bg-card border border-border rounded-2xl p-4 flex gap-3 items-start border-l-[3px] border-l-[var(--accent-warm)]">
+    <div className="glass-light rounded-3xl p-4 flex gap-3 items-start">
       <div className="w-9 h-9 rounded-2xl bg-primary/10 flex items-center justify-center flex-shrink-0">
         <Sparkles className="w-4 h-4 text-primary" />
       </div>
@@ -106,7 +106,7 @@ export async function InsightsCard({ scope, weekStart, weekEnd }: Props) {
 
 export function InsightsCardSkeleton() {
   return (
-    <div className="bg-card border border-border rounded-2xl p-4 flex gap-3 items-start border-l-[3px] border-l-[var(--accent-warm)]/40">
+    <div className="glass-light rounded-3xl p-4 flex gap-3 items-start">
       <div className="w-9 h-9 rounded-2xl bg-primary/5 flex items-center justify-center flex-shrink-0">
         <Sparkles className="w-4 h-4 text-primary/40" />
       </div>

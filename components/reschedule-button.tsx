@@ -51,19 +51,10 @@ export function RescheduleButton() {
       <DialogTrigger asChild>
         <button
           type="button"
-          className="w-full bg-card border border-border border-l-[3px] border-l-[var(--cat-rest)] rounded-2xl p-4 flex items-center gap-3 text-left hover:bg-card/60 transition-colors"
+          className="flex items-center gap-2 h-11 px-4 rounded-full glass-chrome text-sm font-bold text-foreground active:scale-95 transition-transform"
         >
-          <div className="w-9 h-9 rounded-2xl bg-[var(--cat-rest)]/15 flex items-center justify-center flex-shrink-0">
-            <RotateCcw className="w-4 h-4 text-[var(--cat-rest)]" />
-          </div>
-          <div className="flex flex-col min-w-0">
-            <span className="text-[10px] uppercase tracking-wider font-bold text-[var(--cat-rest)]">
-              план зламався
-            </span>
-            <span className="text-sm font-semibold text-foreground">
-              перекинь решту дня під реальність
-            </span>
-          </div>
+          <RotateCcw className="w-4 h-4 text-[var(--cat-rest)]" />
+          перекинути залишок
         </button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-md">

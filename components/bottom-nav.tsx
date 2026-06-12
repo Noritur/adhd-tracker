@@ -14,9 +14,9 @@ export function BottomNav() {
   const pathname = usePathname();
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-40 pb-[env(safe-area-inset-bottom)] bg-background/85 backdrop-blur border-t border-border/40">
+    <nav className="fixed bottom-0 left-0 right-0 z-40 pb-[env(safe-area-inset-bottom)] glass-chrome">
       <div className="mx-auto max-w-md px-3 py-2">
-        <div className="bg-card border border-border rounded-full p-1 flex gap-1">
+        <div className="bg-background/40 rounded-full p-1 flex gap-1">
           {tabs.map((tab) => {
             const active = pathname.startsWith(tab.href);
             return (

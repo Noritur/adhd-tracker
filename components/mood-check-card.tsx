@@ -28,7 +28,7 @@ export async function MoodCheckCard() {
   if (pending.length === 0) return null;
 
   return (
-    <div className="bg-card border border-border rounded-2xl p-4 flex flex-col gap-3 border-l-[3px] border-l-[var(--accent-warm)]">
+    <div className="glass-light rounded-3xl p-4 flex flex-col gap-3">
       <div className="flex flex-col gap-0.5">
         <span className="text-[10px] uppercase tracking-wider font-bold text-[var(--accent-warm)]">
           як пройшло

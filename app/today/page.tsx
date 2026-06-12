@@ -6,17 +6,14 @@ import { getBlocksForDate } from "@/lib/db/blocks";
 import { getProfile, profileTimezone } from "@/lib/db/profile";
 import { getYMDInTZ } from "@/lib/time/tz";
 import { TimelineDay } from "@/components/timeline/timeline-day";
-import { SummaryTiles } from "@/components/summary-tiles";
 import { BottomNav } from "@/components/bottom-nav";
 import {
   InsightsCard,
   InsightsCardSkeleton,
 } from "@/components/insights-card";
-import { MorningPlanner } from "@/components/morning-planner";
 import { EveningReviewCard } from "@/components/evening-review-card";
 import { MoodCheckCard } from "@/components/mood-check-card";
-import { RescheduleButton } from "@/components/reschedule-button";
-import { RebuildButton } from "@/components/rebuild-button";
+import { FabMenu } from "@/components/fab-menu";
 
 const WEEKDAYS = [
   "неділя",
@@ -63,8 +60,9 @@ export default async function TodayPage() {
 
   return (
     <main className="min-h-screen flex flex-col bg-background">
+      <div aria-hidden className="aurora-bg fixed inset-0 -z-10 pointer-events-none" />
       {/* Sticky header */}
-      <header className="sticky top-0 z-40 pt-[env(safe-area-inset-top)] bg-background/80 backdrop-blur border-b border-border/40">
+      <header className="sticky top-0 z-40 pt-[env(safe-area-inset-top)] glass-chrome rounded-b-3xl">
         <div className="flex items-center justify-between px-4 py-3 gap-3">
           <div className="flex items-center gap-2 bg-card border border-border rounded-full px-3 py-1.5 text-sm font-semibold">
             <span className="w-1.5 h-1.5 rounded-full bg-primary" />
@@ -89,13 +87,9 @@ export default async function TodayPage() {
         </div>
       </header>
 
-      <div className="px-4 py-5 pb-32 flex flex-col gap-5">
+      <div className="px-4 py-5 pb-40 flex flex-col gap-5">
         <EveningReviewCard />
         <MoodCheckCard />
-        <MorningPlanner />
-        <RescheduleButton />
-        <RebuildButton />
-        <SummaryTiles blocks={blocks} />
         <Suspense fallback={<InsightsCardSkeleton />}>
           <InsightsCard scope="today" />
         </Suspense>
@@ -107,6 +101,7 @@ export default async function TodayPage() {
       </div>
 
       <BottomNav />
+      <FabMenu />
     </main>
   );
 }

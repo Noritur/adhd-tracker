@@ -54,19 +54,10 @@ export function RebuildButton() {
       <DialogTrigger asChild>
         <button
           type="button"
-          className="w-full bg-card border border-border border-l-[3px] border-l-[var(--cat-outdoors)] rounded-2xl p-4 flex items-center gap-3 text-left hover:bg-card/60 transition-colors"
+          className="flex items-center gap-2 h-11 px-4 rounded-full glass-chrome text-sm font-bold text-foreground active:scale-95 transition-transform"
         >
-          <div className="w-9 h-9 rounded-2xl bg-[var(--cat-outdoors)]/15 flex items-center justify-center flex-shrink-0">
-            <RefreshCw className="w-4 h-4 text-[var(--cat-outdoors)]" />
-          </div>
-          <div className="flex flex-col min-w-0">
-            <span className="text-[10px] uppercase tracking-wider font-bold text-[var(--cat-outdoors)]">
-              перебудувати день
-            </span>
-            <span className="text-sm font-semibold text-foreground">
-              забудь план — новий день від зараз
-            </span>
-          </div>
+          <RefreshCw className="w-4 h-4 text-[var(--cat-outdoors)]" />
+          перебудувати день
         </button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-md">
