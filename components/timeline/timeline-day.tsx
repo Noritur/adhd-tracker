@@ -25,6 +25,10 @@ import type { Block } from "@/lib/db/blocks";
 
 const TAP_THRESHOLD_PX = 6;
 const RESIZE_HIT_PX = 12;
+// Below this chip height the 12px edge zones overlap (15min block = 15px)
+// and the move zone vanishes — short chips drag as a whole, resize via the
+// edit sheet. Must stay in sync with the `tight` tier that hides hint bars.
+const RESIZE_MIN_HEIGHT_PX = 36;
 
 type DragMode = "move" | "resize-top" | "resize-bottom";
 
@@ -298,8 +302,10 @@ function BlockChip({
     const rect = target.getBoundingClientRect();
     const offsetY = e.clientY - rect.top;
     let mode: DragMode = "move";
-    if (offsetY < RESIZE_HIT_PX) mode = "resize-top";
-    else if (offsetY > rect.height - RESIZE_HIT_PX) mode = "resize-bottom";
+    if (rect.height >= RESIZE_MIN_HEIGHT_PX) {
+      if (offsetY < RESIZE_HIT_PX) mode = "resize-top";
+      else if (offsetY > rect.height - RESIZE_HIT_PX) mode = "resize-bottom";
+    }
 
     dragRef.current = {
       mode,
@@ -419,8 +425,9 @@ function BlockChip({
         </span>
       )}
 
-      {/* Resize hint bars — hidden on tight blocks so they don't eat text.
-          Resize still works (handled by offsetY in onPointerDown). */}
+      {/* Resize hint bars — hidden on tight blocks where edge-resize is
+          also disabled (RESIZE_MIN_HEIGHT_PX): whole chip drags, resize
+          happens in the edit sheet. */}
       {!tight && (
         <>
           <span

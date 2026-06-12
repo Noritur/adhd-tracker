@@ -58,10 +58,10 @@ export function MorningPlanner() {
           </div>
           <div className="flex flex-col min-w-0">
             <span className="text-[10px] uppercase tracking-wider font-bold text-[var(--accent-warm)]">
-              ранковий план
+              план дня
             </span>
             <span className="text-sm font-semibold text-foreground">
-              скажи що сьогодні треба — розкидаю по таймлайну
+              скажи що треба — докину блоки у вільні слоти
             </span>
           </div>
         </button>
