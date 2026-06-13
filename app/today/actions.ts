@@ -212,6 +212,69 @@ export async function updateBlockTimesAction(
   return {};
 }
 
+export type CascadeUpdate = { id: number; start_at: string; end_at: string };
+
+/**
+ * Persist a drag-cascade: the moved block plus every block it pushed down.
+ *
+ * The `time_blocks_no_overlap` exclusion constraint is NOT deferrable, so we
+ * apply updates bottom-up (latest start first): each block vacates its slot
+ * before the block above slides into it, avoiding a transient overlap reject.
+ * Focus-limit re-validation is intentionally skipped here — a cascade only
+ * shifts existing blocks in time (no category/count change), and the guard
+ * still runs on manual edits via updateBlockTimesAction.
+ */
+export async function cascadeBlockTimesAction(
+  updates: CascadeUpdate[],
+): Promise<UpdateBlockTimesResult> {
+  if (updates.length === 0) return {};
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "not authenticated" };
+
+  for (const u of updates) {
+    if (!u.id) return { error: "missing id" };
+    if (new Date(u.end_at) <= new Date(u.start_at)) {
+      return { error: "кінець має бути після початку" };
+    }
+  }
+
+  const ordered = [...updates].sort(
+    (a, b) => new Date(b.start_at).getTime() - new Date(a.start_at).getTime(),
+  );
+
+  try {
+    for (const u of ordered) {
+      await updateBlock(supabase, u.id, {
+        start_at: u.start_at,
+        end_at: u.end_at,
+        notified_ending_at: null,
+        notified_started_at: null,
+      });
+    }
+  } catch (e) {
+    const raw = e instanceof Error ? e.message : "update failed";
+    console.error(
+      JSON.stringify({
+        level: "error",
+        msg: "today.cascade_failed",
+        error: raw,
+      }),
+    );
+    const friendly = raw.includes("time_blocks_no_overlap")
+      ? "цей час уже зайнятий"
+      : raw;
+    return { error: friendly };
+  }
+
+  await invalidateInsightsCache(supabase, user.id);
+  revalidatePath("/today");
+  return {};
+}
+
 export type GeneratePlanState = {
   ok: boolean;
   created?: number;

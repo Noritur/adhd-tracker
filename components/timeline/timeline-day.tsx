@@ -1,12 +1,16 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 import {
   BlockEditSheet,
   type EditingBlock,
 } from "@/components/block-edit-sheet";
 import { FabMenu } from "@/components/fab-menu";
-import { updateBlockTimesAction } from "@/app/today/actions";
+import {
+  updateBlockTimesAction,
+  cascadeBlockTimesAction,
+} from "@/app/today/actions";
 import {
   CATEGORIES_BY_VALUE,
   DEFAULT_CATEGORY,
@@ -16,6 +20,7 @@ import {
   MIN_BLOCK_MIN,
   PX_PER_MIN,
   clampMin,
+  computeCascade,
   formatTime,
   isoToMinutesInTZ,
   minutesToISOInTZ,
@@ -158,16 +163,94 @@ export function TimelineDay({
     });
   };
 
-  const updateBlockLocal = (id: number, patch: Partial<Block>) => {
-    setBlocks((prev) =>
-      prev.map((b) => (b.id === id ? { ...b, ...patch } : b)),
+  // Snapshot of block times captured at pointer-down; cascade previews are
+  // recomputed from it every frame so the downward push never compounds.
+  const dragSnapshotRef = useRef<Block[] | null>(null);
+
+  const beginDrag = () => {
+    dragSnapshotRef.current = blocksRef.current;
+  };
+
+  // Live preview while dragging. Resize touches only the dragged block; move
+  // runs the Sunsama cascade against the snapshot and rebuilds every block
+  // from it (unchanged ones snap back to their original slot).
+  const previewDrag = (
+    id: number,
+    kind: DragMode,
+    newStart: number,
+    newEnd: number,
+  ) => {
+    if (kind !== "move") {
+      setBlocks((prev) =>
+        prev.map((b) =>
+          b.id === id
+            ? {
+                ...b,
+                start_at: minutesToISOInTZ(ymd, newStart, tz),
+                end_at: minutesToISOInTZ(ymd, newEnd, tz),
+              }
+            : b,
+        ),
+      );
+      return;
+    }
+    const base = dragSnapshotRef.current ?? blocksRef.current;
+    const mins = base.map((b) => ({
+      id: b.id,
+      startMin: isoToMinutesInTZ(b.start_at, tz),
+      endMin: isoToMinutesInTZ(b.end_at, tz),
+    }));
+    const changed = computeCascade(id, newStart, newEnd, mins);
+    if (!changed) return; // chain wouldn't fit — hold the last good frame
+    setBlocks(
+      base.map((b) => {
+        const ch = changed.find((c) => c.id === b.id);
+        if (!ch) return b;
+        return {
+          ...b,
+          start_at: minutesToISOInTZ(ymd, ch.startMin, tz),
+          end_at: minutesToISOInTZ(ymd, ch.endMin, tz),
+        };
+      }),
     );
   };
 
-  const commitBlockTimes = async (id: number) => {
-    const current = blocksRef.current.find((b) => b.id === id);
-    if (!current) return;
-    await updateBlockTimesAction(id, current.start_at, current.end_at);
+  const commitDrag = async (id: number, kind: DragMode) => {
+    const snapshot = dragSnapshotRef.current;
+    dragSnapshotRef.current = null;
+
+    if (kind !== "move") {
+      const current = blocksRef.current.find((b) => b.id === id);
+      if (!current) return;
+      const res = await updateBlockTimesAction(
+        id,
+        current.start_at,
+        current.end_at,
+      );
+      if (res?.error && snapshot) {
+        setBlocks(snapshot);
+        toast.error(res.error);
+      }
+      return;
+    }
+
+    // Collect every block whose time differs from the snapshot (dragged + pushed).
+    const updates = blocksRef.current
+      .filter((b) => {
+        const orig = snapshot?.find((s) => s.id === b.id);
+        return (
+          orig &&
+          (orig.start_at !== b.start_at || orig.end_at !== b.end_at)
+        );
+      })
+      .map((b) => ({ id: b.id, start_at: b.start_at, end_at: b.end_at }));
+
+    if (updates.length === 0) return;
+    const res = await cascadeBlockTimesAction(updates);
+    if (res?.error && snapshot) {
+      setBlocks(snapshot);
+      toast.error(res.error);
+    }
   };
 
   // Keep a ref to latest blocks for use inside async drop handlers
@@ -215,7 +298,6 @@ export function TimelineDay({
               key={block.id}
               block={block}
               otherBlocks={blocks.filter((b) => b.id !== block.id)}
-              ymd={ymd}
               tz={tz}
               onTap={() =>
                 setEditing({
@@ -226,8 +308,9 @@ export function TimelineDay({
                   label: block.label ?? "",
                 })
               }
-              onLocalChange={updateBlockLocal}
-              onCommit={commitBlockTimes}
+              onDragStart={beginDrag}
+              onPreview={previewDrag}
+              onCommit={commitDrag}
             />
           ))}
 
@@ -257,19 +340,24 @@ export function TimelineDay({
 function BlockChip({
   block,
   otherBlocks,
-  ymd,
   tz,
   onTap,
-  onLocalChange,
+  onDragStart,
+  onPreview,
   onCommit,
 }: {
   block: Block;
   otherBlocks: Block[];
-  ymd: string;
   tz: string;
   onTap: () => void;
-  onLocalChange: (id: number, patch: Partial<Block>) => void;
-  onCommit: (id: number) => Promise<void>;
+  onDragStart: () => void;
+  onPreview: (
+    id: number,
+    kind: DragMode,
+    newStart: number,
+    newEnd: number,
+  ) => void;
+  onCommit: (id: number, kind: DragMode) => Promise<void>;
 }) {
   const startMin = isoToMinutesInTZ(block.start_at, tz);
   const endMin = isoToMinutesInTZ(block.end_at, tz);
@@ -311,6 +399,7 @@ function BlockChip({
     };
     target.setPointerCapture(e.pointerId);
     setActiveMode(mode);
+    onDragStart();
   };
 
   const onPointerMove = (e: React.PointerEvent<HTMLButtonElement>) => {
@@ -333,8 +422,9 @@ function BlockChip({
     if (state.mode === "move") {
       const duration = state.origEnd - state.origStart;
       newStart = clampMin(state.origStart + deltaMin);
-      // Clamp into lane between adjacent blocks (no overlap)
-      newStart = Math.max(maxAbove, Math.min(minBelow - duration, newStart));
+      // Up-stop against the block above; downward overlap is absorbed by the
+      // cascade in the parent (blocks below get pushed), so no minBelow clamp.
+      newStart = Math.max(maxAbove, newStart);
       newEnd = newStart + duration;
       if (newEnd > DAY_MINUTES) {
         newEnd = DAY_MINUTES;
@@ -354,10 +444,7 @@ function BlockChip({
       }
     }
 
-    onLocalChange(block.id, {
-      start_at: minutesToISOInTZ(ymd, newStart, tz),
-      end_at: minutesToISOInTZ(ymd, newEnd, tz),
-    });
+    onPreview(block.id, state.mode, newStart, newEnd);
   };
 
   const onPointerUp = async (e: React.PointerEvent<HTMLButtonElement>) => {
@@ -365,10 +452,11 @@ function BlockChip({
     if (!state || state.pointerId !== e.pointerId) return;
     e.currentTarget.releasePointerCapture(e.pointerId);
     const wasDragging = state.dragging;
+    const mode = state.mode;
     dragRef.current = null;
     setActiveMode(null);
     if (wasDragging) {
-      await onCommit(block.id);
+      await onCommit(block.id, mode);
     } else {
       onTap();
     }
