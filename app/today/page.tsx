@@ -59,7 +59,7 @@ export default async function TodayPage() {
   void WEEKDAYS; // reserved for full-name use later
 
   return (
-    <main className="min-h-screen flex flex-col bg-background">
+    <main className="min-h-screen flex flex-col">
       <div aria-hidden className="aurora-bg fixed inset-0 -z-10 pointer-events-none" />
       {/* Sticky header */}
       <header className="sticky top-0 z-40 pt-[env(safe-area-inset-top)] glass-chrome rounded-b-3xl">

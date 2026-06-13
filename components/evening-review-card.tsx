@@ -20,7 +20,7 @@ export async function EveningReviewCard() {
   if (review.user_response) return null;
 
   return (
-    <div className="bg-card border border-border rounded-2xl p-4 flex gap-3 items-start border-l-[3px] border-l-primary">
+    <div className="glass-light rounded-3xl p-4 flex gap-3 items-start">
       <div className="w-9 h-9 rounded-2xl bg-primary/10 flex items-center justify-center flex-shrink-0">
         <Moon className="w-4 h-4 text-primary" />
       </div>
@@ -66,7 +66,7 @@ function ReviewBtn({
       <input type="hidden" name="response" value={response} />
       <button
         type="submit"
-        className="px-3 py-1.5 rounded-full text-xs font-semibold bg-muted/60 hover:bg-muted text-foreground transition-colors"
+        className="px-3 py-1.5 rounded-full text-xs font-semibold glass-light text-foreground transition-colors active:scale-95"
       >
         {label}
       </button>

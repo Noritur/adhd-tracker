@@ -114,8 +114,9 @@ export default async function WeekPage({ searchParams }: Props) {
     (!weekWord && isLateInWeek) || (!weekWord && !isCurrentWeek && !isFutureWeek);
 
   return (
-    <main className="min-h-screen flex flex-col bg-background">
-      <header className="sticky top-0 z-40 pt-[env(safe-area-inset-top)] bg-background/80 backdrop-blur border-b border-border/40">
+    <main className="min-h-screen flex flex-col">
+      <div aria-hidden className="aurora-bg fixed inset-0 -z-10 pointer-events-none" />
+      <header className="sticky top-0 z-40 pt-[env(safe-area-inset-top)] glass-chrome rounded-b-3xl">
         <div className="px-4 py-3">
           <WeekNav
             rangeLabel={rangeLabel}
@@ -151,7 +152,7 @@ export default async function WeekPage({ searchParams }: Props) {
         </Suspense>
         <WeeklyHeatmap blocks={blocks} weekStart={weekStart} tz={tz} />
         {blocks.length === 0 && (
-          <div className="bg-card border border-border rounded-2xl p-6 text-center text-sm text-muted-foreground">
+          <div className="glass-light rounded-3xl p-6 text-center text-sm text-muted-foreground">
             {isCurrentWeek ? (
               <>
                 ще нема блоків за тиждень. почни на{" "}

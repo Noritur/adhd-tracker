@@ -16,8 +16,9 @@ export default async function SettingsPage() {
   const profile = await getProfile(supabase, user.id);
 
   return (
-    <main className="min-h-screen flex flex-col bg-background">
-      <header className="sticky top-0 z-40 pt-[env(safe-area-inset-top)] bg-background/80 backdrop-blur border-b border-border/40">
+    <main className="min-h-screen flex flex-col">
+      <div aria-hidden className="aurora-bg fixed inset-0 -z-10 pointer-events-none" />
+      <header className="sticky top-0 z-40 pt-[env(safe-area-inset-top)] glass-chrome rounded-b-3xl">
         <div className="px-4 py-3">
           <h1 className="text-3xl font-extrabold leading-tight">налаштування</h1>
           <p className="text-sm text-[var(--text-secondary)] mt-1">
@@ -49,7 +50,7 @@ export default async function SettingsPage() {
           <form action="/auth/sign-out" method="post">
             <button
               type="submit"
-              className="w-full flex items-center justify-between bg-card border border-border rounded-2xl min-h-[52px] px-4 text-sm font-semibold text-destructive"
+              className="w-full flex items-center justify-between glass-light rounded-2xl min-h-[52px] px-4 text-sm font-semibold text-destructive"
             >
               <span>вийти</span>
               <LogOut className="w-4 h-4" />

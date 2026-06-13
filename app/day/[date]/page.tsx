@@ -74,8 +74,9 @@ export default async function DayPage({ params }: Props) {
   const dateLabel = `${WEEKDAYS_SHORT[weekdayIdx]}, ${d} ${MONTHS[m - 1]}`;
 
   return (
-    <main className="min-h-screen flex flex-col bg-background">
-      <header className="sticky top-0 z-40 pt-[env(safe-area-inset-top)] bg-background/80 backdrop-blur border-b border-border/40">
+    <main className="min-h-screen flex flex-col">
+      <div aria-hidden className="aurora-bg fixed inset-0 -z-10 pointer-events-none" />
+      <header className="sticky top-0 z-40 pt-[env(safe-area-inset-top)] glass-chrome rounded-b-3xl">
         <div className="flex items-center gap-3 px-4 py-3">
           <Link
             href="/week"
@@ -84,7 +85,7 @@ export default async function DayPage({ params }: Props) {
             <ChevronLeft className="w-4 h-4" />
             тиждень
           </Link>
-          <div className="flex items-center gap-2 bg-card border border-border rounded-full px-3 py-1.5 text-sm font-semibold">
+          <div className="flex items-center gap-2 glass-light rounded-full px-3 py-1.5 text-sm font-semibold">
             <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground" />
             {dateLabel}
           </div>
@@ -110,7 +111,7 @@ export default async function DayPage({ params }: Props) {
           </>
         )}
         {blocks.length === 0 && (
-          <div className="bg-card border border-border rounded-2xl p-6 text-center text-sm text-muted-foreground">
+          <div className="glass-light rounded-3xl p-6 text-center text-sm text-muted-foreground">
             нема блоків за цей день.
           </div>
         )}

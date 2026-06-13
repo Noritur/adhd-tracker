@@ -72,7 +72,7 @@ export function WeeklyHeatmap({
   });
 
   return (
-    <div className="bg-card border border-border rounded-3xl p-4 flex flex-col gap-3">
+    <div className="glass-light rounded-3xl p-4 flex flex-col gap-3">
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-extrabold">ритм тижня</h2>
         <span className="text-xs text-muted-foreground tabular-nums">7×6</span>

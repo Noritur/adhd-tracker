@@ -90,7 +90,7 @@ export function BlockEditSheet({
     <Sheet open={open} onOpenChange={(o) => !o && onClose()}>
       <SheetContent
         side="bottom"
-        className="bg-card border-t border-border rounded-t-3xl px-5 pb-6 max-h-[90vh] overflow-y-auto"
+        className="glass-chrome border-0 rounded-t-3xl px-5 pb-6 max-h-[90vh] overflow-y-auto"
       >
         <SheetHeader className="px-0">
           <SheetTitle className="text-2xl font-extrabold">
@@ -144,7 +144,7 @@ export function BlockEditSheet({
               value={label}
               onChange={(e) => setLabel(e.target.value)}
               placeholder="що робив"
-              className="h-12 rounded-2xl bg-popover border-border"
+              className="h-12 rounded-2xl glass-light border-0"
             />
           </div>
 
@@ -161,10 +161,10 @@ export function BlockEditSheet({
                     key={cat.value}
                     type="button"
                     onClick={() => setCategory(cat.value)}
-                    className={`flex flex-col items-center gap-1.5 py-2.5 rounded-2xl border text-[11px] font-bold transition-colors ${
+                    className={`flex flex-col items-center gap-1.5 py-2.5 rounded-2xl text-[11px] font-bold transition-colors ${
                       active
-                        ? "border-primary bg-primary/10 text-foreground"
-                        : "border-border bg-popover text-muted-foreground hover:text-foreground"
+                        ? "bg-primary/15 text-foreground ring-1 ring-primary"
+                        : "glass-light text-muted-foreground hover:text-foreground"
                     }`}
                   >
                     <span
@@ -200,7 +200,7 @@ export function BlockEditSheet({
             <Button
               type="submit"
               disabled={savePending}
-              className="flex-1 h-12 rounded-2xl bg-primary text-primary-foreground font-bold"
+              className="flex-1 h-12 rounded-2xl bg-primary text-primary-foreground glow-primary font-bold"
             >
               {savePending ? "..." : "зберегти"}
             </Button>
@@ -223,7 +223,7 @@ function TimeField({
   colorVar: string;
 }) {
   return (
-    <label className="flex flex-col gap-1 bg-popover rounded-2xl p-3 border border-border cursor-pointer">
+    <label className="flex flex-col gap-1 glass-light rounded-2xl p-3 cursor-pointer">
       <span className="text-[10px] uppercase tracking-wider text-muted-foreground flex items-center gap-2">
         <span
           className="w-2 h-2 rounded-full"

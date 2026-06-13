@@ -237,6 +237,32 @@ Nice additions з mock що тримаємо в продукті:
 
 ---
 
+## V2 restyle — "glow calm + liquid glass" (2026-06-12, pen-only, NOT in code yet)
+
+> Вибрано з 3 варіантів (glow calm / chunky coach / editorial quiet), потім ПРИЙНЯТИЙ
+> glass-флейвор поверх. ФІНАЛЬНІ фрейми = R-G серія в `~/projects/adhdtracker.pen`
+> (Today / Today FAB menu / Block edit / Week / Evening review / Settings / Sign-in / Mood states).
+> R-A/B/C і R-серія без скла лишаються як історія варіантів. Старі ADHD 01-09 — V1 для порівняння.
+> Імплементація в код = окреме рішення (bug-log T10).
+
+**Liquid glass правила (поверх glow calm):**
+
+- **Аврора на фоні:** 2-3 розмиті кольорові плями (blur ~90) на `#0B1014`: teal `#5EEAD4` 10-12%, indigo `#6366F1` 9%, amber/rose/violet 6-8%. Без неї скло невидиме. У коді = фіксовані positioned divs з blur, NOT animated (перф).
+- **Скло (`backdrop-filter: blur`) ТІЛЬКИ на хромі, hard cap 4-5 поверхонь на екран:** sticky header (blur 28), bottom nav (28), bottom sheets (36), FAB-меню pills (20-22), floating cards (24). Рецепт: fill `#131A20` 50-65% АБО `#FFFFFF` 4-12% + inner top highlight 1px `#FFFFFF` 8-12%.
+- **Glass-light (БЕЗ власного blur):** рядки settings, інпути, category chips, tiles — fill `#FFFFFF0A` + inner top highlight. Прозорість пускає аврору, але без перф-податку.
+- **Solid лишаються:** блоки таймлайна (legібельність), primary CTA (teal якір + glow), heatmap cells.
+- **Glow правила як у glow calm** (нижче) — діють без змін.
+
+**Мова: той самий teal-ДНК, нуль рамок, елевація світлом.**
+
+- **Borders: ZERO.** Розділення тільки шарами фону: `#0B1014` (base) → `#131A20` (surface) → `#1A222B` (raised). Hairlines `#141C22` лише в таймлайні/дивайдерах.
+- **Glow = елевація і фокус.** Teal outer shadow (`#5EEAD4` 25-40% alpha, blur 14-28) ТІЛЬКИ на: активний блок таймлайна, now-line, primary CTA, увімкнений toggle, вибрану категорію. Amber glow (`#FBBF24` 20% blur 24) — на рекомендаціях коуча. Floating елементи — чорна тінь y:8 blur:32 50%.
+- **Radius:** cards 22-24, rows 18, sheet top 28, pills/chips full, timeline blocks 14.
+- **Type:** display 26-36/800, рядки 14/500-600, captions 10-11/700 lowercase eyebrows. Все lowercase.
+- **/today структура (timeline-first):** compact header (display "сьогодні" + streak chip) → coach-стрічка 44px (1 рядок, не картка) → таймлайн з ~верхньої третини → FAB 56 з glow → FAB-меню (новий блок / план дня / перекинути залишок / перебудувати день) поверх dim overlay `#0B1014` 70%. Mood-check = floating card поверх таймлайна.
+- **Контроли:** toggle 44×24 (on = teal + glow, knob #0B1014), segmented h28 на #0B1014 підкладці, category chips = pill h40 (selected = color 12% fill + glow + colored text).
+- **Кнопки:** primary = teal fill + glow, secondary = #131A20 fill, ghost = text-only. Один стиль на всю апку.
+
 ## Deferred design polish (post-MVP, чіпаємо коли буде час)
 
 1. **Edit sheet category pills — bg + stroke clean-up.** Pill dots уже на palette (fixed 2026-05-12), але card backgrounds і strokes лишилися від попередніх random hues (наприклад "люди" card має brown-rose bg). План: всі 8 pills → bg `#131A20` (bg-elevated), stroke = category accent на opacity ~0.3. Селектований pill: solid ring 2px в accent color на 100%.

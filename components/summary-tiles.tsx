@@ -66,10 +66,7 @@ function Tile({
   colorVar: string;
 }) {
   return (
-    <div
-      className="bg-card rounded-2xl border border-border p-4 flex flex-col gap-1 border-l-[3px]"
-      style={{ borderLeftColor: colorVar }}
-    >
+    <div className="glass-light rounded-3xl p-4 flex flex-col gap-1">
       <div className="flex items-center gap-1.5">
         <Icon className="w-3.5 h-3.5" style={{ color: colorVar }} />
         <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">

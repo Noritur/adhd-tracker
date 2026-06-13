@@ -42,7 +42,7 @@ export function RetroFillCard({ ymd, hasBlocks }: Props) {
   return (
     <form
       action={formAction}
-      className="w-full bg-card border border-border border-l-[3px] border-l-[var(--cat-social)] rounded-2xl p-4 flex flex-col gap-3"
+      className="w-full glass-light rounded-3xl p-4 flex flex-col gap-3"
     >
       <input type="hidden" name="ymd" value={ymd} />
       <div className="flex items-center gap-3">

@@ -45,9 +45,10 @@ export default function SignInPage() {
   if (state.step === "awaiting_code" && email) {
     return (
       <main className="min-h-screen flex flex-col items-center justify-center px-6 py-10">
+        <div aria-hidden className="aurora-bg fixed inset-0 -z-10 pointer-events-none" />
         <div className="w-full max-w-sm flex flex-col gap-8">
           <div className="flex flex-col items-center text-center gap-4">
-            <div className="w-20 h-20 rounded-3xl bg-card border border-border flex items-center justify-center">
+            <div className="w-20 h-20 rounded-3xl glass-chrome glow-primary flex items-center justify-center">
               <Mail className="w-9 h-9 text-primary" />
             </div>
             <h1 className="text-3xl font-extrabold leading-tight">
@@ -58,7 +59,7 @@ export default function SignInPage() {
             </p>
           </div>
 
-          <div className="rounded-2xl bg-card border border-border p-4 text-sm">
+          <div className="rounded-2xl glass-light p-4 text-sm">
             <span className="block text-xs text-muted-foreground uppercase tracking-wider mb-1">
               надіслано на
             </span>
@@ -115,9 +116,10 @@ export default function SignInPage() {
   // Default: hero + mode tabs + form
   return (
     <main className="min-h-screen flex flex-col items-center justify-center px-6 py-10">
+      <div aria-hidden className="aurora-bg fixed inset-0 -z-10 pointer-events-none" />
       <div className="w-full max-w-sm flex flex-col gap-8">
         <div className="flex flex-col items-center text-center gap-4">
-          <div className="w-20 h-20 rounded-3xl bg-card border border-border flex items-center justify-center">
+          <div className="w-20 h-20 rounded-3xl glass-chrome glow-primary flex items-center justify-center">
             <Sparkles className="w-9 h-9 text-primary" />
           </div>
           <h1 className="text-3xl font-extrabold leading-tight">adhd tracker</h1>
@@ -127,7 +129,7 @@ export default function SignInPage() {
         </div>
 
         {/* Mode toggle */}
-        <div className="flex gap-1 p-1 rounded-2xl bg-card border border-border">
+        <div className="flex gap-1 p-1 rounded-2xl glass-light">
           <button
             type="button"
             onClick={() => setMode("password")}

@@ -151,8 +151,8 @@ export function SettingsForm({
                   onClick={() => toggleRestDay(wd.value)}
                   className={`flex-1 h-9 rounded-full text-xs font-bold transition-colors ${
                     active
-                      ? "bg-primary text-primary-foreground"
-                      : "bg-muted/60 text-muted-foreground"
+                      ? "bg-primary text-primary-foreground glow-primary"
+                      : "glass-light text-muted-foreground"
                   }`}
                 >
                   {wd.label}
@@ -166,7 +166,7 @@ export function SettingsForm({
       <Section title="Тренер">
         <Row label="тон">
           <input type="hidden" name="ai_tone" value={tone} />
-          <div className="flex bg-muted/60 rounded-full p-0.5 gap-0.5">
+          <div className="flex bg-black/20 rounded-full p-0.5 gap-0.5">
             <button
               type="button"
               onClick={() => setTone("gentle")}
@@ -201,13 +201,15 @@ export function SettingsForm({
             type="button"
             onClick={() => setReviewEnabled((v) => !v)}
             aria-pressed={reviewEnabled}
-            className={`relative w-11 h-6 rounded-full transition-colors ${
-              reviewEnabled ? "bg-primary" : "bg-muted"
+            className={`relative w-11 h-6 rounded-full transition-colors duration-200 ${
+              reviewEnabled ? "bg-primary glow-primary" : "bg-white/10"
             }`}
           >
             <span
-              className={`absolute top-0.5 w-5 h-5 rounded-full bg-card shadow-sm transition-transform ${
-                reviewEnabled ? "translate-x-5" : "translate-x-0.5"
+              className={`absolute left-0.5 top-0.5 w-5 h-5 rounded-full shadow-sm transition-transform duration-200 ease-out ${
+                reviewEnabled
+                  ? "translate-x-[20px] bg-primary-foreground"
+                  : "translate-x-0 bg-white/70"
               }`}
             />
           </button>
@@ -229,7 +231,7 @@ export function SettingsForm({
       <button
         type="submit"
         disabled={isPending}
-        className="w-full bg-primary text-primary-foreground rounded-2xl h-[52px] flex items-center justify-center text-base font-semibold disabled:opacity-50"
+        className="w-full bg-primary text-primary-foreground glow-primary rounded-2xl h-[52px] flex items-center justify-center text-base font-semibold disabled:opacity-50"
       >
         {isPending ? "зберігаю..." : "зберегти"}
       </button>
@@ -262,7 +264,7 @@ function Row({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex items-center justify-between bg-card border border-border rounded-2xl min-h-[52px] px-4 gap-3">
+    <div className="flex items-center justify-between glass-light rounded-2xl min-h-[52px] px-4 gap-3">
       <span className="text-sm text-muted-foreground">{label}</span>
       {children}
     </div>
