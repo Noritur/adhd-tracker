@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Plus } from "lucide-react";
 import {
   BlockEditSheet,
   type EditingBlock,
 } from "@/components/block-edit-sheet";
+import { FabMenu } from "@/components/fab-menu";
 import { updateBlockTimesAction } from "@/app/today/actions";
 import {
   CATEGORIES_BY_VALUE,
@@ -240,15 +240,9 @@ export function TimelineDay({
           )}
         </div>
 
-        <button
-          type="button"
-          onClick={openCreateNow}
-          className="fixed bottom-6 right-6 w-14 h-14 rounded-full bg-primary text-primary-foreground flex items-center justify-center shadow-2xl shadow-primary/30 active:scale-95 transition-transform z-30"
-          aria-label="новий блок зараз"
-        >
-          <Plus className="w-6 h-6" strokeWidth={2.5} />
-        </button>
       </div>
+
+      <FabMenu onNewBlock={openCreateNow} />
 
       <BlockEditSheet
         editing={editing}

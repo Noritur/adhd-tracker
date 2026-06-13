@@ -6,7 +6,7 @@ import { MorningPlanner } from "@/components/morning-planner";
 import { RescheduleButton } from "@/components/reschedule-button";
 import { RebuildButton } from "@/components/rebuild-button";
 
-export function FabMenu() {
+export function FabMenu({ onNewBlock }: { onNewBlock?: () => void }) {
   const [open, setOpen] = useState(false);
 
   return (
@@ -28,6 +28,16 @@ export function FabMenu() {
         }`}
         onClickCapture={() => setOpen(false)}
       >
+        {onNewBlock && (
+          <button
+            type="button"
+            onClick={onNewBlock}
+            className="flex items-center gap-2 h-11 px-4 rounded-full bg-primary text-primary-foreground glow-primary text-sm font-bold active:scale-95 transition-transform"
+          >
+            <Plus className="w-4 h-4" />
+            новий блок
+          </button>
+        )}
         <MorningPlanner />
         <RescheduleButton />
         <RebuildButton />

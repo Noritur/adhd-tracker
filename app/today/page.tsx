@@ -13,7 +13,6 @@ import {
 } from "@/components/insights-card";
 import { EveningReviewCard } from "@/components/evening-review-card";
 import { MoodCheckCard } from "@/components/mood-check-card";
-import { FabMenu } from "@/components/fab-menu";
 
 const WEEKDAYS = [
   "неділя",
@@ -101,7 +100,6 @@ export default async function TodayPage() {
       </div>
 
       <BottomNav />
-      <FabMenu />
     </main>
   );
 }
