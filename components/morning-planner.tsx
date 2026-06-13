@@ -17,7 +17,11 @@ import {
   type GeneratePlanState,
 } from "@/app/today/actions";
 
-export function MorningPlanner() {
+export function MorningPlanner({
+  variant = "pill",
+}: {
+  variant?: "pill" | "hero";
+}) {
   const [open, setOpen] = useState(false);
   const [state, formAction, isPending] = useActionState<
     GeneratePlanState | null,
@@ -49,13 +53,32 @@ export function MorningPlanner() {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <button
-          type="button"
-          className="flex items-center gap-2 h-11 px-4 rounded-full glass-chrome text-sm font-bold text-foreground active:scale-95 transition-transform"
-        >
-          <Sparkles className="w-4 h-4 text-primary" />
-          план дня
-        </button>
+        {variant === "hero" ? (
+          <button
+            type="button"
+            className="w-full glass-light rounded-3xl p-5 flex items-center gap-4 text-left active:scale-[0.98] transition-transform"
+          >
+            <div className="w-12 h-12 rounded-2xl bg-primary/15 glow-primary flex items-center justify-center flex-shrink-0">
+              <Sparkles className="w-5 h-5 text-primary" />
+            </div>
+            <div className="flex flex-col gap-0.5 min-w-0">
+              <span className="text-base font-bold text-foreground">
+                почни день
+              </span>
+              <span className="text-sm text-[var(--text-secondary)]">
+                опиши що треба — AI збере план у вільні слоти
+              </span>
+            </div>
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="flex items-center gap-2 h-11 px-4 rounded-full glass-chrome text-sm font-bold text-foreground active:scale-95 transition-transform"
+          >
+            <Sparkles className="w-4 h-4 text-primary" />
+            план дня
+          </button>
+        )}
       </DialogTrigger>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
