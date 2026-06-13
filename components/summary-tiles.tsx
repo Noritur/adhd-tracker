@@ -1,12 +1,40 @@
-import { Flame, Sun, Users, Moon, type LucideIcon } from "lucide-react";
+import {
+  Flame,
+  Dumbbell,
+  Sun,
+  Users,
+  Moon,
+  House,
+  Shapes,
+  type LucideIcon,
+} from "lucide-react";
 import type { Block } from "@/lib/db/blocks";
 import type { Category } from "@/lib/categories";
 import { formatDuration } from "@/lib/time/slots";
 
-function sumMinutesByCategory(
-  blocks: Block[],
-  cats: Category[],
-): number {
+/**
+ * Tile groups, in stable priority order. "фокус" merges the two productive
+ * categories; everything else maps 1:1. A tile only renders if its blocks
+ * sum to more than zero, so a day shows exactly the kinds of time it held —
+ * no permanent zero tiles, and sport/chores/other are no longer invisible.
+ */
+const GROUPS: {
+  key: string;
+  cats: Category[];
+  label: string;
+  icon: LucideIcon;
+  colorVar: string;
+}[] = [
+  { key: "focus", cats: ["coded", "work_other"], label: "фокус", icon: Flame, colorVar: "var(--cat-coded)" },
+  { key: "sport", cats: ["sport"], label: "спорт", icon: Dumbbell, colorVar: "var(--cat-sport)" },
+  { key: "outdoors", cats: ["outdoors"], label: "надвір", icon: Sun, colorVar: "var(--cat-outdoors)" },
+  { key: "social", cats: ["social"], label: "люди", icon: Users, colorVar: "var(--cat-social)" },
+  { key: "rest", cats: ["rest"], label: "відпочинок", icon: Moon, colorVar: "var(--cat-rest)" },
+  { key: "chores", cats: ["chores"], label: "побут", icon: House, colorVar: "var(--cat-chores)" },
+  { key: "other", cats: ["other"], label: "інше", icon: Shapes, colorVar: "var(--cat-other)" },
+];
+
+function sumMinutesByCategory(blocks: Block[], cats: Category[]): number {
   return blocks
     .filter((b) => cats.includes(b.category))
     .reduce(
@@ -19,37 +47,29 @@ function sumMinutesByCategory(
 }
 
 export function SummaryTiles({ blocks }: { blocks: Block[] }) {
-  const focusMin = sumMinutesByCategory(blocks, ["coded", "work_other"]);
-  const outdoorsMin = sumMinutesByCategory(blocks, ["outdoors"]);
-  const socialMin = sumMinutesByCategory(blocks, ["social"]);
-  const restMin = sumMinutesByCategory(blocks, ["rest"]);
+  const tiles = GROUPS.map((g) => ({
+    ...g,
+    minutes: sumMinutesByCategory(blocks, g.cats),
+  }))
+    .filter((t) => t.minutes > 0)
+    .sort((a, b) => b.minutes - a.minutes);
+
+  if (tiles.length === 0) return null;
+
+  // One kind of time → full-width tile; otherwise a two-column grid.
+  const cols = tiles.length === 1 ? "grid-cols-1" : "grid-cols-2";
 
   return (
-    <div className="grid grid-cols-2 gap-3">
-      <Tile
-        icon={Flame}
-        label="фокус"
-        value={formatDuration(focusMin)}
-        colorVar="var(--cat-coded)"
-      />
-      <Tile
-        icon={Sun}
-        label="надвір"
-        value={formatDuration(outdoorsMin)}
-        colorVar="var(--cat-outdoors)"
-      />
-      <Tile
-        icon={Users}
-        label="люди"
-        value={formatDuration(socialMin)}
-        colorVar="var(--cat-social)"
-      />
-      <Tile
-        icon={Moon}
-        label="відпочинок"
-        value={formatDuration(restMin)}
-        colorVar="var(--cat-rest)"
-      />
+    <div className={`grid ${cols} gap-3`}>
+      {tiles.map((t) => (
+        <Tile
+          key={t.key}
+          icon={t.icon}
+          label={t.label}
+          value={formatDuration(t.minutes)}
+          colorVar={t.colorVar}
+        />
+      ))}
     </div>
   );
 }
