@@ -36,27 +36,29 @@ import {
   type FocusCheckBlock,
 } from "@/lib/rules/focus-limits";
 
-/** Load same-day blocks as FocusCheckBlock[], excluding one id (for edits). */
-async function focusContext(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-  userId: string,
-  anchorISO: string,
-  tz: string,
-  excludeId: number | null,
-): Promise<FocusCheckBlock[]> {
-  const day = await getBlocksForDate(
-    supabase,
-    userId,
-    new Date(anchorISO),
-    tz,
-  );
-  return day
-    .filter((b) => b.id !== excludeId)
-    .map((b) => ({
-      category: b.category,
-      startMs: new Date(b.start_at).getTime(),
-      endMs: new Date(b.end_at).getTime(),
-    }));
+/**
+ * Normalize a thrown DB error to a user-facing message. Supabase throws a
+ * PostgrestError — a plain object, NOT an Error instance — so `e instanceof
+ * Error` misses it and the real reason got swallowed as "save failed". Read
+ * `.message`/`.code` off the object and special-case the no-overlap exclusion
+ * (code 23P01) which is by far the most common manual-edit rejection.
+ */
+function describeDbError(e: unknown, fallback: string): string {
+  const obj =
+    e && typeof e === "object"
+      ? (e as { message?: unknown; code?: unknown })
+      : null;
+  const message =
+    e instanceof Error
+      ? e.message
+      : typeof obj?.message === "string"
+        ? obj.message
+        : fallback;
+  const code = typeof obj?.code === "string" ? obj.code : "";
+  if (code === "23P01" || message.includes("time_blocks_no_overlap")) {
+    return "цей час перекриває інший блок — посунь або зміни час";
+  }
+  return message;
 }
 
 export type SaveBlockState = { error?: string };
@@ -87,17 +89,11 @@ export async function saveBlockAction(
   if (!user) return { error: "not authenticated" };
 
   if (isFocus(category)) {
-    const profile = await getProfile(supabase, user.id);
-    const tz = profileTimezone(profile);
-    const others = await focusContext(supabase, user.id, start_at, tz, id);
-    const check = validateFocusBlock(
-      {
-        category,
-        startMs: new Date(start_at).getTime(),
-        endMs: new Date(end_at).getTime(),
-      },
-      others,
-    );
+    const check = validateFocusBlock({
+      category,
+      startMs: new Date(start_at).getTime(),
+      endMs: new Date(end_at).getTime(),
+    });
     if (!check.ok) return { error: check.error };
   }
 
@@ -121,14 +117,14 @@ export async function saveBlockAction(
       });
     }
   } catch (e) {
-    const raw = e instanceof Error ? e.message : "save failed";
     console.error(
-      JSON.stringify({ level: "error", msg: "today.save_failed", error: raw }),
+      JSON.stringify({
+        level: "error",
+        msg: "today.save_failed",
+        error: e instanceof Error ? e.message : JSON.stringify(e),
+      }),
     );
-    const friendly = raw.includes("time_blocks_no_overlap")
-      ? "цей час уже зайнятий іншим блоком"
-      : raw;
-    return { error: friendly };
+    return { error: describeDbError(e, "не вдалось зберегти") };
   }
 
   await invalidateInsightsCache(supabase, user.id);
@@ -165,21 +161,11 @@ export async function updateBlockTimesAction(
     );
     const self = day.find((b) => b.id === id);
     if (self && isFocus(self.category)) {
-      const others: FocusCheckBlock[] = day
-        .filter((b) => b.id !== id)
-        .map((b) => ({
-          category: b.category,
-          startMs: new Date(b.start_at).getTime(),
-          endMs: new Date(b.end_at).getTime(),
-        }));
-      const check = validateFocusBlock(
-        {
-          category: self.category,
-          startMs: new Date(start_at).getTime(),
-          endMs: new Date(end_at).getTime(),
-        },
-        others,
-      );
+      const check = validateFocusBlock({
+        category: self.category,
+        startMs: new Date(start_at).getTime(),
+        endMs: new Date(end_at).getTime(),
+      });
       if (!check.ok) return { error: check.error };
     }
   }
@@ -193,18 +179,14 @@ export async function updateBlockTimesAction(
       notified_started_at: null,
     });
   } catch (e) {
-    const raw = e instanceof Error ? e.message : "update failed";
     console.error(
       JSON.stringify({
         level: "error",
         msg: "today.update_times_failed",
-        error: raw,
+        error: e instanceof Error ? e.message : JSON.stringify(e),
       }),
     );
-    const friendly = raw.includes("time_blocks_no_overlap")
-      ? "цей час уже зайнятий"
-      : raw;
-    return { error: friendly };
+    return { error: describeDbError(e, "не вдалось оновити час") };
   }
 
   await invalidateInsightsCache(supabase, user.id);
@@ -256,18 +238,14 @@ export async function cascadeBlockTimesAction(
       });
     }
   } catch (e) {
-    const raw = e instanceof Error ? e.message : "update failed";
     console.error(
       JSON.stringify({
         level: "error",
         msg: "today.cascade_failed",
-        error: raw,
+        error: e instanceof Error ? e.message : JSON.stringify(e),
       }),
     );
-    const friendly = raw.includes("time_blocks_no_overlap")
-      ? "цей час уже зайнятий"
-      : raw;
-    return { error: friendly };
+    return { error: describeDbError(e, "не вдалось зберегти") };
   }
 
   await invalidateInsightsCache(supabase, user.id);
@@ -435,12 +413,6 @@ export async function rescheduleAction(
     return { ok: false, error: "AI не зміг перепланувати, спробуй ще" };
   }
 
-  // Occupied set for focus-rule checks: kept blocks + applied moves.
-  const occupied: FocusCheckBlock[] = keep.map((b) => ({
-    category: b.category,
-    startMs: new Date(b.start_at).getTime(),
-    endMs: new Date(b.end_at).getTime(),
-  }));
 
   let moved = 0;
   let dropped = 0;
@@ -482,8 +454,9 @@ export async function rescheduleAction(
       endMs: new Date(endISO).getTime(),
     };
 
-    // Gap violation can't be fixed locally — still drop.
-    const check = validateFocusBlock(candidate, occupied);
+    // Focus blocks are already trimmed to the cap above; keep the check as a
+    // guard so the rule can't be bypassed if that trim ever changes.
+    const check = validateFocusBlock(candidate);
     if (!check.ok) {
       dropped++;
       continue;
@@ -496,7 +469,6 @@ export async function rescheduleAction(
         notified_ending_at: null,
         notified_started_at: null,
       });
-      occupied.push(candidate);
       moved++;
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);

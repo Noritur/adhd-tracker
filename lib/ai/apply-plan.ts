@@ -24,11 +24,7 @@ import {
   getHHMMInTZ,
   localDateTimeToUTC,
 } from "@/lib/time/tz";
-import {
-  MAX_FOCUS_MIN,
-  MIN_FOCUS_GAP_MIN,
-  isFocus,
-} from "@/lib/rules/focus-limits";
+import { MAX_FOCUS_MIN, isFocus } from "@/lib/rules/focus-limits";
 import type { Plan } from "./planner";
 
 // biome-ignore lint/suspicious/noExplicitAny: schema generic intentionally loose
@@ -154,21 +150,6 @@ export async function applyPlanBlocks({
     // Trim focus to 50 min (planner pattern — never silently drop).
     if (isFocus(cat) && eMin - sMin > MAX_FOCUS_MIN) {
       eMin = sMin + MAX_FOCUS_MIN;
-    }
-
-    // 15-min gap between focus blocks. Can't be fixed locally → drop.
-    if (isFocus(cat)) {
-      const tooTight = busy.some((b) => {
-        if (!isFocus(b.category)) return false;
-        const overlaps = sMin < b.end && b.start < eMin;
-        if (overlaps) return false;
-        const gap = eMin <= b.start ? b.start - eMin : sMin - b.end;
-        return gap < MIN_FOCUS_GAP_MIN;
-      });
-      if (tooTight) {
-        skipped++;
-        continue;
-      }
     }
 
     const startISO = localDateTimeToUTC(ymd, formatTime(sMin), tz).toISOString();

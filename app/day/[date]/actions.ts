@@ -84,10 +84,8 @@ export async function retroFillAction(
   }
 
   // Insert blocks with overlap/focus safety.
-  // `busy` keeps minute-of-day intervals for fast overlap pre-check;
-  // `occupiedFocus` mirrors them as FocusCheckBlock for the shared validator.
+  // `busy` keeps minute-of-day intervals for fast overlap pre-check.
   const busy: { start: number; end: number; category: Category }[] = [];
-  const occupiedFocus: FocusCheckBlock[] = [];
   let created = 0;
   let skipped = 0;
 
@@ -131,16 +129,15 @@ export async function retroFillAction(
       tz,
     ).toISOString();
 
-    // Run shared focus-rule validation: 50-min cap + 15-min spacing rule.
-    // Trim already handled duration, but validator catches gap violation
-    // against previously inserted focus blocks.
+    // Shared focus-rule validation: 50-min cap. Trim already handled
+    // duration; keep the check as a guard against bypass.
     if (isFocus(cat)) {
       const candidate: FocusCheckBlock = {
         category: cat,
         startMs: new Date(startISO).getTime(),
         endMs: new Date(endISO).getTime(),
       };
-      const check = validateFocusBlock(candidate, occupiedFocus);
+      const check = validateFocusBlock(candidate);
       if (!check.ok) {
         skipped++;
         continue;
@@ -156,13 +153,6 @@ export async function retroFillAction(
         label: blk.label ?? null,
       });
       busy.push({ start: aiStart, end: eMin, category: cat });
-      if (isFocus(cat)) {
-        occupiedFocus.push({
-          category: cat,
-          startMs: new Date(startISO).getTime(),
-          endMs: new Date(endISO).getTime(),
-        });
-      }
       created++;
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);

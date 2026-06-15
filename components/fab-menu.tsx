@@ -21,7 +21,7 @@ export function FabMenu({ onNewBlock }: { onNewBlock?: () => void }) {
       {/* Pills stay mounted so their dialogs survive the menu closing;
           a captured click closes the menu while the dialog opens. */}
       <div
-        className={`fixed right-4 bottom-40 z-50 flex flex-col items-end gap-2.5 transition-all duration-200 ${
+        className={`fixed right-4 bottom-[calc(10rem+env(safe-area-inset-bottom))] z-50 flex flex-col items-end gap-2.5 transition-all duration-200 ${
           open
             ? "opacity-100 translate-y-0"
             : "opacity-0 translate-y-2 pointer-events-none"
@@ -47,7 +47,7 @@ export function FabMenu({ onNewBlock }: { onNewBlock?: () => void }) {
         onClick={() => setOpen((v) => !v)}
         aria-label={open ? "закрити меню" : "AI-дії з днем"}
         aria-expanded={open}
-        className={`fixed right-4 bottom-[5.5rem] z-50 w-14 h-14 rounded-full flex items-center justify-center transition-colors active:scale-95 ${
+        className={`fixed right-4 bottom-[calc(5.5rem+env(safe-area-inset-bottom))] z-50 w-14 h-14 rounded-full flex items-center justify-center transition-colors active:scale-95 ${
           open
             ? "glass-chrome text-foreground"
             : "bg-primary text-primary-foreground glow-primary"
