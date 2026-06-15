@@ -270,12 +270,17 @@ export function TimelineDay({
     applyPreview(last.id, last.kind, last.newStart, last.newEnd);
 
     let updates: { id: number; start_at: string; end_at: string }[];
+    // Push direction decides the save order against the no-overlap constraint.
+    let moveDirection: "up" | "down" = "down";
     if (kind === "move") {
       const mins = snapshot.map((b) => ({
         id: b.id,
         startMin: isoToMinutesInTZ(b.start_at, tz),
         endMin: isoToMinutesInTZ(b.end_at, tz),
       }));
+      const origStart =
+        mins.find((m) => m.id === last.id)?.startMin ?? last.newStart;
+      moveDirection = last.newStart < origStart ? "up" : "down";
       const changed = computeCascade(last.id, last.newStart, last.newEnd, mins);
       if (!changed) {
         setBlocks(snapshot);
@@ -304,7 +309,7 @@ export function TimelineDay({
     if (updates.length === 0) return;
     const res =
       kind === "move"
-        ? await cascadeBlockTimesAction(updates)
+        ? await cascadeBlockTimesAction(updates, moveDirection)
         : await updateBlockTimesAction(
             updates[0].id,
             updates[0].start_at,
@@ -491,9 +496,8 @@ function BlockChip({
     if (state.mode === "move") {
       const duration = state.origEnd - state.origStart;
       newStart = clampMin(state.origStart + deltaMin);
-      // Up-stop against the block above; downward overlap is absorbed by the
-      // cascade in the parent (blocks below get pushed), so no minBelow clamp.
-      newStart = Math.max(maxAbove, newStart);
+      // No lane clamp on move: overlap in either direction is absorbed by the
+      // cascade in the parent (blocks below pushed down, blocks above pushed up).
       newEnd = newStart + duration;
       if (newEnd > DAY_MINUTES) {
         newEnd = DAY_MINUTES;
@@ -634,8 +638,10 @@ function BlockChip({
         )}
       </div>
 
-      {/* Edit mode: large explicit handles that overhang the chip so even a
-          15-min block has a finger-sized grab target, plus a details button. */}
+      {/* Edit mode: resize handles sit ENTIRELY outside the chip (their inner
+          edge meets the chip edge), so the whole body stays a clean move zone
+          and a finger near the top/bottom no longer triggers resize by mistake.
+          The handle bar is pushed to the outer edge as a visible affordance. */}
       {selected && (
         <>
           <div
@@ -643,7 +649,7 @@ function BlockChip({
             onPointerMove={onDragMove}
             onPointerUp={onDragEnd}
             onPointerCancel={cancelDrag}
-            className="absolute -top-3 left-0 right-0 h-7 flex items-center justify-center touch-none cursor-ns-resize z-40"
+            className="absolute -top-7 left-0 right-0 h-7 flex items-end justify-center pb-1 touch-none cursor-ns-resize z-40"
             aria-label="розтягнути зверху"
           >
             <span className="w-10 h-1.5 rounded-full bg-primary shadow-md" />
@@ -653,7 +659,7 @@ function BlockChip({
             onPointerMove={onDragMove}
             onPointerUp={onDragEnd}
             onPointerCancel={cancelDrag}
-            className="absolute -bottom-3 left-0 right-0 h-7 flex items-center justify-center touch-none cursor-ns-resize z-40"
+            className="absolute -bottom-7 left-0 right-0 h-7 flex items-start justify-center pt-1 touch-none cursor-ns-resize z-40"
             aria-label="розтягнути знизу"
           >
             <span className="w-10 h-1.5 rounded-full bg-primary shadow-md" />

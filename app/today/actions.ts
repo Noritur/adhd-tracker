@@ -197,17 +197,20 @@ export async function updateBlockTimesAction(
 export type CascadeUpdate = { id: number; start_at: string; end_at: string };
 
 /**
- * Persist a drag-cascade: the moved block plus every block it pushed down.
+ * Persist a drag-cascade: the moved block plus every block it pushed.
  *
- * The `time_blocks_no_overlap` exclusion constraint is NOT deferrable, so we
- * apply updates bottom-up (latest start first): each block vacates its slot
- * before the block above slides into it, avoiding a transient overlap reject.
- * Focus-limit re-validation is intentionally skipped here — a cascade only
- * shifts existing blocks in time (no category/count change), and the guard
- * still runs on manual edits via updateBlockTimesAction.
+ * The `time_blocks_no_overlap` exclusion constraint is NOT deferrable, so the
+ * save order must let each block vacate its slot before its neighbor slides in:
+ *   - "down" push → latest start first (bottom-up)
+ *   - "up" push   → earliest start first (top-down)
+ * A single drag only pushes one direction, so `direction` picks the safe order.
+ * Focus-limit re-validation is intentionally skipped — a cascade only shifts
+ * existing blocks in time (no category/count change), and the guard still runs
+ * on manual edits via updateBlockTimesAction.
  */
 export async function cascadeBlockTimesAction(
   updates: CascadeUpdate[],
+  direction: "up" | "down" = "down",
 ): Promise<UpdateBlockTimesResult> {
   if (updates.length === 0) return {};
 
@@ -224,9 +227,10 @@ export async function cascadeBlockTimesAction(
     }
   }
 
-  const ordered = [...updates].sort(
-    (a, b) => new Date(b.start_at).getTime() - new Date(a.start_at).getTime(),
-  );
+  const ordered = [...updates].sort((a, b) => {
+    const delta = new Date(a.start_at).getTime() - new Date(b.start_at).getTime();
+    return direction === "up" ? delta : -delta;
+  });
 
   try {
     for (const u of ordered) {

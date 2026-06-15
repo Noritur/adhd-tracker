@@ -97,20 +97,20 @@ export function timeStringToMin(str: string): number {
 export type CascadeBlock = { id: number; startMin: number; endMin: number };
 
 /**
- * Sunsama-style downward push for drag-to-reschedule.
+ * Sunsama-style push for drag-to-reschedule, symmetric in both directions.
  *
- * The dragged block goes to [newStart, newEnd]. Every block that starts at or
- * after the dragged block's ORIGINAL start (i.e. sits below it) is walked top
- * to bottom: if the running frontier overlaps it, it slides down by exactly the
- * overlap (duration preserved); gaps absorb the push so a block with room ahead
- * never moves. Blocks above the dragged one are never touched — upward motion is
- * clamped by the caller, not cascaded.
+ * The dragged block goes to [newStart, newEnd]. Blocks at/below its ORIGINAL
+ * start are walked top→bottom and pushed DOWN by exactly the overlap; blocks
+ * strictly above are walked bottom→top and pushed UP. Either way gaps absorb
+ * the push (a block with room never moves) and durations are preserved. A
+ * single drag only ever pushes one direction (moving up can't overlap blocks
+ * below and vice-versa), so running both passes is safe.
  *
- * Always compute against an ORIGINAL snapshot of the blocks (not a frame that a
+ * Always compute against an ORIGINAL snapshot of the blocks (not a frame a
  * previous drag tick already shifted), or the push compounds.
  *
  * Returns the changed blocks (dragged first), or null if the chain would run
- * past end-of-day — the caller should then reject that drag frame.
+ * past either end of the day — the caller should then reject that drag frame.
  */
 export function computeCascade(
   draggedId: number,
@@ -120,27 +120,47 @@ export function computeCascade(
 ): CascadeBlock[] | null {
   const dragged = blocks.find((b) => b.id === draggedId);
   if (!dragged) return null;
-  if (newEnd > DAY_MINUTES) return null;
-
-  const below = blocks
-    .filter((b) => b.id !== draggedId && b.startMin >= dragged.startMin)
-    .sort((a, b) => a.startMin - b.startMin);
+  if (newEnd > DAY_MINUTES || newStart < 0) return null;
 
   const changed: CascadeBlock[] = [
     { id: draggedId, startMin: newStart, endMin: newEnd },
   ];
-  let frontier = newEnd;
+
+  // Down-push: blocks at/below the dragged block's original start.
+  const below = blocks
+    .filter((b) => b.id !== draggedId && b.startMin >= dragged.startMin)
+    .sort((a, b) => a.startMin - b.startMin);
+  let frontierDown = newEnd;
   for (const b of below) {
-    if (b.startMin < frontier) {
+    if (b.startMin < frontierDown) {
       const dur = b.endMin - b.startMin;
-      const start = frontier;
+      const start = frontierDown;
       const end = start + dur;
       if (end > DAY_MINUTES) return null; // chain doesn't fit the day
       changed.push({ id: b.id, startMin: start, endMin: end });
-      frontier = end;
+      frontierDown = end;
     } else {
-      frontier = b.endMin; // gap absorbed the push; block stays put
+      frontierDown = b.endMin; // gap absorbed the push; block stays put
     }
   }
+
+  // Up-push: blocks strictly above, nearest first (descending start).
+  const above = blocks
+    .filter((b) => b.id !== draggedId && b.startMin < dragged.startMin)
+    .sort((a, b) => b.startMin - a.startMin);
+  let frontierUp = newStart;
+  for (const b of above) {
+    if (b.endMin > frontierUp) {
+      const dur = b.endMin - b.startMin;
+      const end = frontierUp;
+      const start = end - dur;
+      if (start < 0) return null; // chain doesn't fit before midnight
+      changed.push({ id: b.id, startMin: start, endMin: end });
+      frontierUp = start;
+    } else {
+      frontierUp = b.startMin; // gap absorbed the push; block stays put
+    }
+  }
+
   return changed;
 }
