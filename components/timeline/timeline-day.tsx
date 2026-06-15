@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { Pencil } from "lucide-react";
 import { toast } from "sonner";
 import {
   BlockEditSheet,
@@ -29,11 +30,6 @@ import {
 import type { Block } from "@/lib/db/blocks";
 
 const TAP_THRESHOLD_PX = 6;
-const RESIZE_HIT_PX = 12;
-// Below this chip height the 12px edge zones overlap (15min block = 15px)
-// and the move zone vanishes — short chips drag as a whole, resize via the
-// edit sheet. Must stay in sync with the `tight` tier that hides hint bars.
-const RESIZE_MIN_HEIGHT_PX = 36;
 
 type DragMode = "move" | "resize-top" | "resize-bottom";
 
@@ -72,12 +68,21 @@ export function TimelineDay({
   // Local mirror of blocks so drag previews are immediate.
   const [blocks, setBlocks] = useState<Block[]>(initialBlocks);
   const [editing, setEditing] = useState<EditingBlock | null>(null);
+  // Which block is in tap-to-edit mode (shows resize handles + accepts drag).
+  const [selectedId, setSelectedId] = useState<number | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
   // Sync when server revalidates with fresh data.
   useEffect(() => {
     setBlocks(initialBlocks);
   }, [initialBlocks]);
+
+  // Drop selection if the selected block disappeared (deleted / revalidated).
+  useEffect(() => {
+    if (selectedId !== null && !initialBlocks.some((b) => b.id === selectedId)) {
+      setSelectedId(null);
+    }
+  }, [initialBlocks, selectedId]);
 
   const onGridPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if ((e.target as HTMLElement).closest("[data-block]")) return;
@@ -90,7 +95,12 @@ export function TimelineDay({
     };
     const onUp = (ev: PointerEvent) => {
       cancel();
-      if (Math.abs(ev.clientY - startY) <= TAP_THRESHOLD_PX) {
+      if (Math.abs(ev.clientY - startY) > TAP_THRESHOLD_PX) return;
+      // A tap on empty grid first dismisses an active selection; only when
+      // nothing is selected does it create a block.
+      if (selectedId !== null) {
+        setSelectedId(null);
+      } else {
         openCreateAtY(ev.clientY);
       }
     };
@@ -171,10 +181,22 @@ export function TimelineDay({
     dragSnapshotRef.current = blocksRef.current;
   };
 
-  // Live preview while dragging. Resize touches only the dragged block; move
-  // runs the Sunsama cascade against the snapshot and rebuilds every block
-  // from it (unchanged ones snap back to their original slot).
-  const previewDrag = (
+  // rAF-coalesced drag preview: pointermove can fire several times per frame,
+  // so we stash the latest target and apply it once per animation frame
+  // instead of calling setBlocks on every event (that re-renders every chip
+  // and was the source of the "laggy" drag).
+  const lastPreviewRef = useRef<{
+    id: number;
+    kind: DragMode;
+    newStart: number;
+    newEnd: number;
+  } | null>(null);
+  const rafRef = useRef<number | null>(null);
+
+  // Apply one preview frame. Resize touches only the dragged block; move runs
+  // the Sunsama cascade against the snapshot and rebuilds every block from it
+  // (unchanged ones snap back to their original slot, so pushes never compound).
+  const applyPreview = (
     id: number,
     kind: DragMode,
     newStart: number,
@@ -215,39 +237,80 @@ export function TimelineDay({
     );
   };
 
-  const commitDrag = async (id: number, kind: DragMode) => {
-    const snapshot = dragSnapshotRef.current;
-    dragSnapshotRef.current = null;
+  const previewDrag = (
+    id: number,
+    kind: DragMode,
+    newStart: number,
+    newEnd: number,
+  ) => {
+    lastPreviewRef.current = { id, kind, newStart, newEnd };
+    if (rafRef.current == null) {
+      rafRef.current = requestAnimationFrame(() => {
+        rafRef.current = null;
+        const p = lastPreviewRef.current;
+        if (p) applyPreview(p.id, p.kind, p.newStart, p.newEnd);
+      });
+    }
+  };
 
-    if (kind !== "move") {
-      const current = blocksRef.current.find((b) => b.id === id);
-      if (!current) return;
-      const res = await updateBlockTimesAction(
-        id,
-        current.start_at,
-        current.end_at,
-      );
-      if (res?.error && snapshot) {
+  // Commit derives the final layout from the snapshot + last drag target —
+  // not from React state, which may trail a frame behind the last preview.
+  const commitDrag = async (id: number, kind: DragMode) => {
+    if (rafRef.current != null) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+    }
+    const snapshot = dragSnapshotRef.current;
+    const last = lastPreviewRef.current;
+    dragSnapshotRef.current = null;
+    lastPreviewRef.current = null;
+    if (!snapshot || !last) return; // no actual movement
+
+    // Paint the final frame so the UI matches what we persist.
+    applyPreview(last.id, last.kind, last.newStart, last.newEnd);
+
+    let updates: { id: number; start_at: string; end_at: string }[];
+    if (kind === "move") {
+      const mins = snapshot.map((b) => ({
+        id: b.id,
+        startMin: isoToMinutesInTZ(b.start_at, tz),
+        endMin: isoToMinutesInTZ(b.end_at, tz),
+      }));
+      const changed = computeCascade(last.id, last.newStart, last.newEnd, mins);
+      if (!changed) {
         setBlocks(snapshot);
-        toast.error(res.error);
+        return;
       }
-      return;
+      updates = changed
+        .map((ch) => ({
+          id: ch.id,
+          start_at: minutesToISOInTZ(ymd, ch.startMin, tz),
+          end_at: minutesToISOInTZ(ymd, ch.endMin, tz),
+        }))
+        .filter((u) => {
+          const o = snapshot.find((s) => s.id === u.id);
+          return o && (o.start_at !== u.start_at || o.end_at !== u.end_at);
+        });
+    } else {
+      updates = [
+        {
+          id,
+          start_at: minutesToISOInTZ(ymd, last.newStart, tz),
+          end_at: minutesToISOInTZ(ymd, last.newEnd, tz),
+        },
+      ];
     }
 
-    // Collect every block whose time differs from the snapshot (dragged + pushed).
-    const updates = blocksRef.current
-      .filter((b) => {
-        const orig = snapshot?.find((s) => s.id === b.id);
-        return (
-          orig &&
-          (orig.start_at !== b.start_at || orig.end_at !== b.end_at)
-        );
-      })
-      .map((b) => ({ id: b.id, start_at: b.start_at, end_at: b.end_at }));
-
     if (updates.length === 0) return;
-    const res = await cascadeBlockTimesAction(updates);
-    if (res?.error && snapshot) {
+    const res =
+      kind === "move"
+        ? await cascadeBlockTimesAction(updates)
+        : await updateBlockTimesAction(
+            updates[0].id,
+            updates[0].start_at,
+            updates[0].end_at,
+          );
+    if (res?.error) {
       setBlocks(snapshot);
       toast.error(res.error);
     }
@@ -258,6 +321,13 @@ export function TimelineDay({
   useEffect(() => {
     blocksRef.current = blocks;
   }, [blocks]);
+
+  // Cancel any pending preview frame if we unmount mid-drag.
+  useEffect(() => {
+    return () => {
+      if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
+    };
+  }, []);
 
   return (
     <>
@@ -299,7 +369,9 @@ export function TimelineDay({
               block={block}
               otherBlocks={blocks.filter((b) => b.id !== block.id)}
               tz={tz}
-              onTap={() =>
+              selected={selectedId === block.id}
+              onSelect={() => setSelectedId(block.id)}
+              onOpenDetails={() =>
                 setEditing({
                   id: block.id,
                   startMin: isoToMinutesInTZ(block.start_at, tz),
@@ -341,7 +413,9 @@ function BlockChip({
   block,
   otherBlocks,
   tz,
-  onTap,
+  selected,
+  onSelect,
+  onOpenDetails,
   onDragStart,
   onPreview,
   onCommit,
@@ -349,7 +423,9 @@ function BlockChip({
   block: Block;
   otherBlocks: Block[];
   tz: string;
-  onTap: () => void;
+  selected: boolean;
+  onSelect: () => void;
+  onOpenDetails: () => void;
   onDragStart: () => void;
   onPreview: (
     id: number,
@@ -376,19 +452,13 @@ function BlockChip({
     dragging: boolean;
     pointerId: number;
   } | null>(null);
+  // Tap detection for an unselected block (a clean tap selects it).
+  const tapRef = useRef<{ startY: number; pointerId: number; moved: boolean } | null>(null);
   const [activeMode, setActiveMode] = useState<DragMode | null>(null);
 
-  const onPointerDown = (e: React.PointerEvent<HTMLButtonElement>) => {
+  const startDrag = (mode: DragMode, e: React.PointerEvent<HTMLElement>) => {
     e.stopPropagation();
-    const target = e.currentTarget;
-    const rect = target.getBoundingClientRect();
-    const offsetY = e.clientY - rect.top;
-    let mode: DragMode = "move";
-    if (rect.height >= RESIZE_MIN_HEIGHT_PX) {
-      if (offsetY < RESIZE_HIT_PX) mode = "resize-top";
-      else if (offsetY > rect.height - RESIZE_HIT_PX) mode = "resize-bottom";
-    }
-
+    e.currentTarget.setPointerCapture(e.pointerId);
     dragRef.current = {
       mode,
       startY: e.clientY,
@@ -397,12 +467,11 @@ function BlockChip({
       dragging: false,
       pointerId: e.pointerId,
     };
-    target.setPointerCapture(e.pointerId);
     setActiveMode(mode);
     onDragStart();
   };
 
-  const onPointerMove = (e: React.PointerEvent<HTMLButtonElement>) => {
+  const onDragMove = (e: React.PointerEvent<HTMLElement>) => {
     const state = dragRef.current;
     if (!state || state.pointerId !== e.pointerId) return;
     const dy = e.clientY - state.startY;
@@ -447,117 +516,160 @@ function BlockChip({
     onPreview(block.id, state.mode, newStart, newEnd);
   };
 
-  const onPointerUp = async (e: React.PointerEvent<HTMLButtonElement>) => {
+  const onDragEnd = async (e: React.PointerEvent<HTMLElement>) => {
     const state = dragRef.current;
     if (!state || state.pointerId !== e.pointerId) return;
     e.currentTarget.releasePointerCapture(e.pointerId);
-    const wasDragging = state.dragging;
     const mode = state.mode;
+    const wasDragging = state.dragging;
     dragRef.current = null;
     setActiveMode(null);
-    if (wasDragging) {
-      await onCommit(block.id, mode);
-    } else {
-      onTap();
-    }
+    if (wasDragging) await onCommit(block.id, mode);
   };
 
-  const cursor =
-    activeMode === "resize-top" || activeMode === "resize-bottom"
-      ? "ns-resize"
-      : activeMode === "move"
-        ? "grabbing"
-        : "grab";
+  const cancelDrag = () => {
+    dragRef.current = null;
+    setActiveMode(null);
+  };
+
+  // Body pointer handlers. Selected → body is the move handle; unselected →
+  // a tap (no vertical travel) selects, and vertical travel is left to the
+  // page scroll (touch-pan-y) instead of being captured as a drag.
+  const onBodyPointerDown = (e: React.PointerEvent<HTMLElement>) => {
+    if (selected) {
+      startDrag("move", e);
+      return;
+    }
+    tapRef.current = { startY: e.clientY, pointerId: e.pointerId, moved: false };
+  };
+  const onBodyPointerMove = (e: React.PointerEvent<HTMLElement>) => {
+    if (selected) {
+      onDragMove(e);
+      return;
+    }
+    const t = tapRef.current;
+    if (t && t.pointerId === e.pointerId && Math.abs(e.clientY - t.startY) > TAP_THRESHOLD_PX) {
+      t.moved = true;
+    }
+  };
+  const onBodyPointerUp = (e: React.PointerEvent<HTMLElement>) => {
+    if (selected) {
+      void onDragEnd(e);
+      return;
+    }
+    const t = tapRef.current;
+    tapRef.current = null;
+    if (t && t.pointerId === e.pointerId && !t.moved) onSelect();
+  };
 
   return (
-    <button
-      type="button"
-      data-block
-      onPointerDown={onPointerDown}
-      onPointerMove={onPointerMove}
-      onPointerUp={onPointerUp}
-      onPointerCancel={() => {
-        dragRef.current = null;
-        setActiveMode(null);
-      }}
-      className={`absolute left-16 right-2 rounded-xl flex flex-col text-left overflow-hidden touch-none select-none shadow-sm ${
-        tight
-          ? "px-2 py-0.5 justify-center gap-0"
-          : compact
-            ? "px-3 py-1 gap-0"
-            : "px-3 py-2 gap-0.5"
-      }`}
-      style={{
-        top: `${startMin * PX_PER_MIN}px`,
-        height: `${height}px`,
-        backgroundColor: meta.cssVar,
-        cursor,
-      }}
+    <div
+      className={`absolute left-16 right-2 ${selected ? "z-30" : "z-10"}`}
+      style={{ top: `${startMin * PX_PER_MIN}px`, height: `${height}px` }}
     >
-      {block.mood && (
-        <span
-          className="absolute top-1 right-2 text-xs leading-none pointer-events-none"
-          aria-hidden
-        >
-          {block.mood === "fire"
-            ? "🔥"
-            : block.mood === "ok"
-              ? "😐"
-              : "🫠"}
-        </span>
-      )}
-
-      {/* Resize hint bars — hidden on tight blocks where edge-resize is
-          also disabled (RESIZE_MIN_HEIGHT_PX): whole chip drags, resize
-          happens in the edit sheet. */}
-      {!tight && (
-        <>
+      <div
+        data-block
+        onPointerDown={onBodyPointerDown}
+        onPointerMove={onBodyPointerMove}
+        onPointerUp={onBodyPointerUp}
+        onPointerCancel={cancelDrag}
+        className={`relative h-full w-full rounded-xl flex flex-col text-left overflow-hidden select-none shadow-sm ${
+          selected
+            ? "ring-2 ring-primary ring-offset-2 ring-offset-background touch-none"
+            : "touch-pan-y"
+        } ${
+          tight
+            ? "px-2 py-0.5 justify-center gap-0"
+            : compact
+              ? "px-3 py-1 gap-0"
+              : "px-3 py-2 gap-0.5"
+        }`}
+        style={{
+          backgroundColor: meta.cssVar,
+          cursor: selected
+            ? activeMode === "move"
+              ? "grabbing"
+              : "grab"
+            : "pointer",
+        }}
+      >
+        {block.mood && (
           <span
-            className="absolute left-0 right-0 top-0 h-3 flex items-center justify-center"
+            className="absolute top-1 right-2 text-xs leading-none pointer-events-none"
             aria-hidden
           >
-            <span className="w-8 h-0.5 rounded-full bg-[#0B1014]/30" />
+            {block.mood === "fire" ? "🔥" : block.mood === "ok" ? "😐" : "🫠"}
           </span>
-          <span
-            className="absolute left-0 right-0 bottom-0 h-3 flex items-center justify-center"
-            aria-hidden
-          >
-            <span className="w-8 h-0.5 rounded-full bg-[#0B1014]/30" />
-          </span>
-        </>
-      )}
+        )}
 
-      {tight ? (
-        <div className="text-[11px] font-bold text-[#0B1014] leading-none truncate">
-          {block.label || meta.label}
-        </div>
-      ) : compact ? (
-        <>
-          <div className="text-[13px] font-extrabold text-[#0B1014] leading-tight truncate">
+        {tight ? (
+          <div className="text-[11px] font-bold text-[#0B1014] leading-none truncate">
             {block.label || meta.label}
           </div>
-          {block.label && (
-            <div className="text-[10px] font-bold uppercase tracking-wide text-[#0B1014]/60 leading-none truncate">
+        ) : compact ? (
+          <>
+            <div className="text-[13px] font-extrabold text-[#0B1014] leading-tight truncate">
+              {block.label || meta.label}
+            </div>
+            {block.label && (
+              <div className="text-[10px] font-bold uppercase tracking-wide text-[#0B1014]/60 leading-none truncate">
+                {meta.label}
+              </div>
+            )}
+          </>
+        ) : (
+          <>
+            <div className="text-[11px] font-bold tabular-nums text-[#0B1014]/70">
+              {formatTime(startMin)} — {formatTime(endMin)}
+            </div>
+            <div className="text-sm font-extrabold text-[#0B1014] leading-tight">
               {meta.label}
             </div>
-          )}
-        </>
-      ) : (
+            {block.label && (
+              <div className="text-xs text-[#0B1014]/80 leading-tight truncate">
+                {block.label}
+              </div>
+            )}
+          </>
+        )}
+      </div>
+
+      {/* Edit mode: large explicit handles that overhang the chip so even a
+          15-min block has a finger-sized grab target, plus a details button. */}
+      {selected && (
         <>
-          <div className="text-[11px] font-bold tabular-nums text-[#0B1014]/70 mt-2">
-            {formatTime(startMin)} — {formatTime(endMin)}
+          <div
+            onPointerDown={(e) => startDrag("resize-top", e)}
+            onPointerMove={onDragMove}
+            onPointerUp={onDragEnd}
+            onPointerCancel={cancelDrag}
+            className="absolute -top-3 left-0 right-0 h-7 flex items-center justify-center touch-none cursor-ns-resize z-40"
+            aria-label="розтягнути зверху"
+          >
+            <span className="w-10 h-1.5 rounded-full bg-primary shadow-md" />
           </div>
-          <div className="text-sm font-extrabold text-[#0B1014] leading-tight">
-            {meta.label}
+          <div
+            onPointerDown={(e) => startDrag("resize-bottom", e)}
+            onPointerMove={onDragMove}
+            onPointerUp={onDragEnd}
+            onPointerCancel={cancelDrag}
+            className="absolute -bottom-3 left-0 right-0 h-7 flex items-center justify-center touch-none cursor-ns-resize z-40"
+            aria-label="розтягнути знизу"
+          >
+            <span className="w-10 h-1.5 rounded-full bg-primary shadow-md" />
           </div>
-          {block.label && (
-            <div className="text-xs text-[#0B1014]/80 leading-tight truncate">
-              {block.label}
-            </div>
-          )}
+          <button
+            type="button"
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={onOpenDetails}
+            className="absolute -right-2 -top-2 w-8 h-8 rounded-full bg-background text-foreground shadow-md flex items-center justify-center z-40 active:scale-90"
+            aria-label="деталі блоку"
+          >
+            <Pencil className="w-4 h-4" />
+          </button>
         </>
       )}
-    </button>
+    </div>
   );
 }
 
