@@ -318,6 +318,51 @@ ${byDay}
 выходные — норма отдыха, не провал, не считай их пустыми. помни tone of voice: только строчные, живо, остро, без шаблонов.`;
 }
 
+export function buildWeekAdvicePrompt(args: {
+  profile: Profile | null;
+  weekSummary: string;
+  userNote: string;
+  pastWeeks: {
+    weekStart: string;
+    summary: string;
+    userNote: string | null;
+    advice: string | null;
+  }[];
+}): string {
+  const { profile, weekSummary, userNote, pastWeeks } = args;
+  const tone = profile?.ai_tone ?? "gentle";
+
+  const memory =
+    pastWeeks.length === 0
+      ? "(пока пусто — это первая рефлексия)"
+      : pastWeeks
+          .map((w) => {
+            const note = w.userNote ? `\n  моя заметка: ${w.userNote}` : "";
+            const adv = w.advice ? `\n  что ты советовал: ${w.advice}` : "";
+            return `• неделя с ${w.weekStart}: ${w.summary}${note}${adv}`;
+          })
+          .join("\n");
+
+  return `${COACH_VOICE}
+
+---
+
+контекст: конец недели, я делаю рефлексию. у тебя есть ДОЛГАЯ ПАМЯТЬ по моим неделям — пользуйся ей, связывай с паттернами.
+
+тон: ${tone === "firm" ? "жесткий, прямой" : "мягкий, заботливый, но честный"}
+
+твои мысли по этой неделе (ты их уже написал):
+${weekSummary}
+
+что я сам говорю про свое состояние за неделю:
+${userNote}
+
+память — прошлые недели (твои мысли + мои заметки + что ты советовал):
+${memory}
+
+твоя задача — advice: дай совет и инсайты с опорой НА МОЙ ВВОД и на то что ты помнишь о прошлых неделях. свяжи с паттернами (что повторяется неделя к неделе, что меняется, где застреваю или расту). 3-5 фраз, конкретно, как другу. без faq-вступлений, без общей мудрости. tone of voice: только строчные, живо, остро.`;
+}
+
 export function buildPlannerPrompt(
   userText: string,
   profile: Profile | null,

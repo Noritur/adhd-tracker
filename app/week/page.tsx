@@ -19,6 +19,7 @@ import {
 import { WeekNav } from "@/components/week-nav";
 import { WeekWord } from "@/components/week-word";
 import { WeekSummaryCard } from "@/components/week-summary-card";
+import { WeekReflection } from "@/components/week-reflection";
 import { getWeekWord } from "@/lib/db/week-words";
 import { getWeekSummary } from "@/lib/db/week-summaries";
 import { getWeekdayInTZ } from "@/lib/time/tz";
@@ -149,6 +150,12 @@ export default async function WeekPage({ searchParams }: Props) {
           showPrompt={showWordPrompt}
         />
         <WeekSummaryCard summary={weekSummary?.summary ?? null} />
+        <WeekReflection
+          weekStart={mondayYMD}
+          summary={weekSummary?.summary ?? null}
+          note={weekSummary?.user_note ?? null}
+          advice={weekSummary?.advice ?? null}
+        />
         <SummaryTiles blocks={blocks} />
         <Suspense fallback={<InsightsCardSkeleton />}>
           <InsightsCard
