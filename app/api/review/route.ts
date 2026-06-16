@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getBlocksForDate } from "@/lib/db/blocks";
+import { getBlocksForDate, getBlocksForRange } from "@/lib/db/blocks";
 import { insertReview } from "@/lib/db/reviews";
 import { generateReview } from "@/lib/ai/review";
 import {
@@ -8,10 +8,13 @@ import {
   getYMDInTZ,
   getWeekdayInTZ,
   localMondayMidnightUTC,
+  localWeekBoundsUTC,
 } from "@/lib/time/tz";
 import { timeStringToMin } from "@/lib/time/slots";
 import { sendToUser } from "@/lib/push/send";
 import { getWeekWord } from "@/lib/db/week-words";
+import { getWeekSummary, setWeekSummary } from "@/lib/db/week-summaries";
+import { generateWeekSummary } from "@/lib/ai/week-summary";
 import type { Profile } from "@/lib/db/profile";
 import { requireCronAuth } from "@/lib/auth/cron";
 
@@ -54,6 +57,7 @@ async function handler(request: Request): Promise<Response> {
     skipped_no_blocks: 0,
     skipped_no_match: 0,
     failed: 0,
+    summaries: 0,
   };
 
   for (const p of (profiles ?? []) as Profile[]) {
@@ -172,6 +176,47 @@ async function handler(request: Request): Promise<Response> {
         JSON.stringify({
           level: "warn",
           msg: "cron.review.word_push_failed",
+          user: p.id,
+          error: e instanceof Error ? e.message : String(e),
+        }),
+      );
+    }
+  }
+
+  // Sunday week-summary generation: same TZ window as review, but only on
+  // Sunday. Once per user per week (idempotent via unique (user_id,
+  // week_start)). A frozen narrative recap that later feeds coach memory.
+  for (const p of (profiles ?? []) as Profile[]) {
+    const tz = p.timezone;
+    if (getWeekdayInTZ(now, tz) !== 0) continue; // only Sunday (0=Sun)
+
+    const localHHMM = getHHMMInTZ(now, tz);
+    const targetHHMM = (p.evening_review_at ?? "21:00:00").slice(0, 5);
+    const cur = timeStringToMin(localHHMM);
+    const target = timeStringToMin(targetHHMM);
+    const rawDiff = Math.abs(cur - target);
+    const diff = Math.min(rawDiff, 1440 - rawDiff);
+    if (diff > WINDOW_MIN) continue;
+
+    const monday = localMondayMidnightUTC(now, tz);
+    const mondayYMD = getYMDInTZ(monday, tz);
+    if (await getWeekSummary(admin, p.id, mondayYMD)) continue; // already done
+
+    const { start, end } = localWeekBoundsUTC(now, tz);
+    const blocks = await getBlocksForRange(admin, p.id, start, end);
+    if (blocks.length === 0) continue;
+
+    const summary = await generateWeekSummary(p, blocks, mondayYMD, tz);
+    if (!summary) continue;
+
+    try {
+      await setWeekSummary(admin, p.id, mondayYMD, summary.summary, summary);
+      stats.summaries++;
+    } catch (e) {
+      console.error(
+        JSON.stringify({
+          level: "error",
+          msg: "cron.review.summary_failed",
           user: p.id,
           error: e instanceof Error ? e.message : String(e),
         }),

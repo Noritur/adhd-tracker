@@ -287,6 +287,37 @@ ${timeline || "(пусто)"}
 помни tone of voice: только строчные, живо, остро, без шаблонов.`;
 }
 
+export function buildWeekSummaryPrompt(
+  profile: Profile | null,
+  blocks: Block[],
+  weekStart: string,
+  tz: string = "UTC",
+): string {
+  const tone = profile?.ai_tone ?? "gentle";
+  const summary = summarizeByCategory(blocks);
+  const byDay = summarizeByDay(blocks, tz);
+
+  return `${COACH_VOICE}
+
+---
+
+контекст: неделя закончилась (с понедельника ${weekStart}). это итог недели — якорь памяти, к которому я вернусь через месяцы. не совет на будущее, а честный слепок: что это была за неделя.
+
+тон: ${tone === "firm" ? "жесткий, прямой" : "мягкий, заботливый, но честный"}
+
+итоги по категориям за неделю:
+${summary}
+
+разбивка по дням:
+${byDay}
+
+всего блоков: ${blocks.length}
+
+твоя задача — summary: наративный итог недели в 3-4 фразы. что реально вышло, какие паттерны (по дням, по энергии), какой был ритм и настроение. пиши как другу, без faq-вступлений, без "на этой неделе ты...". это память — будь конкретным (какие дни, какие категории всплывали), чтобы через время это что-то значило.
+
+выходные — норма отдыха, не провал, не считай их пустыми. помни tone of voice: только строчные, живо, остро, без шаблонов.`;
+}
+
 export function buildPlannerPrompt(
   userText: string,
   profile: Profile | null,
