@@ -1,69 +1,69 @@
 # adhd-tracker
 
-AI-коуч для людей з ADHD-патерном, який живе у таймлайні твого дня.
+An AI coach for people with an ADHD pattern — one that lives inside the timeline of your day.
 
 **Production:** https://adhd-tracker-nine.vercel.app
 
 ---
 
-## Проблема
+## The problem
 
-Існуючі трекери часу (Toggl, Clockify, Pomodoro-таймери) побудовані для нейротипічних людей: "запусти таймер, зупини таймер". Для ADHD-мозку це не працює:
+Existing time trackers (Toggl, Clockify, Pomodoro timers) are built for neurotypical people: "start a timer, stop a timer." For an ADHD brain that doesn't work:
 
-- **Time-blindness** -- відчуття часу порушене, 50-хвилинна focus-сесія суб'єктивно = 15 хвилин
-- **Decision paralysis** -- ранок починається з "що робити?" і закінчується скролінгом
-- **Hyperfocus trap** -- 3 години без перерви, потім повний crash
-- **Plan collapse** -- план зламався о 14:00, весь день здається втраченим
+- **Time blindness** — the sense of time is broken; a 50-minute focus session subjectively feels like 15
+- **Decision paralysis** — the morning starts with "what do I do?" and ends in scrolling
+- **Hyperfocus trap** — three hours with no break, then a full crash
+- **Plan collapse** — the plan broke at 2pm, so the whole day feels lost
 
-Потрібен не таймер, а AI-партнер, який бачить патерни, нагадує вчасно і допомагає реструктурувати день коли все пішло не за планом.
+What's needed isn't a timer but an AI partner that sees patterns, reminds you on time, and helps restructure the day when everything goes off the rails.
 
-## Що робить
+## What it does
 
-Веб-додаток з вертикальним таймлайном дня (drag-and-drop, 1px = 1 хвилина) і вісьмома AI-точками взаємодії:
+A web app built around a vertical timeline of the day (drag-and-drop, 1px = 1 minute) with eight AI touchpoints:
 
-**Timeline CRUD** -- tap створює блок; tap по блоку -> режим редагування з overhanging-ручками (resize) і чистою move-зоною. drag-to-move штовхає сусідні блоки (cascade push вгору і вниз, Sunsama-style), drag-to-resize з 15-хв snap. Overlap protection на рівні DB (exclusion constraint) і клієнта. 8 категорій з кольоровою палітрою.
+**Timeline CRUD** — tap creates a block; tapping a block enters edit mode with overhanging handles (resize) and a clean move zone. Drag-to-move pushes neighboring blocks (cascade push, up and down, Sunsama-style); drag-to-resize with a 15-min snap. Overlap protection at both the DB level (exclusion constraint) and the client. 8 color-coded categories.
 
-**Morning planner** -- "що сьогодні треба?" -> AI розкладає блоки по таймлайну, обходить існуючі, враховує робочі години і anti-burnout правила. Блоки створюються одразу, не як "рекомендації".
+**Morning planner** — "what do I need today?" → the AI lays blocks onto the timeline, works around existing ones, respects work hours and anti-burnout rules. Blocks are created immediately, not offered as "suggestions."
 
-**Inline insights** -- AI-коуч аналізує залоговане (today або week scope) і дає observation + recommendation. Cache 2 години. Не FAQ-відповіді -- конкретні патерни з твоїх даних.
+**Inline insights** — the AI coach analyzes what's logged (today or week scope) and returns an observation + recommendation. Cached for 2 hours. Not FAQ answers — concrete patterns from your own data.
 
-**Adaptive reschedule** -- натискаєш "план зламався", AI бере всі блоки після поточного часу, перепаковує на залишок дня з коментарем що не влізло. keep/toMove split, focus-правила re-validated server-side.
+**Adaptive reschedule** — hit "the plan broke," and the AI takes every block after the current time and repacks the rest of the day, with a note on what didn't fit. keep/toMove split, focus rules re-validated server-side.
 
-**Rebuild day** -- "забудь план, починаємо з нуля". Видаляє всі майбутні блоки сьогодні (а не всю tomorrow!) ATOMIC: тільки після успіху AI. Якщо AI впав → твій день недоторканий.
+**Rebuild day** — "forget the plan, start over." Deletes all *future* blocks for today (not all of tomorrow!). ATOMIC: only after the AI succeeds. If the AI fails, your day is untouched.
 
-**Retro fill** -- пропустив день? Відкрий `/day/2025-05-31`, опиши текстом, AI реконструює блоки минулого дня з focus-правилами і TZ-aware часом.
+**Retro fill** — missed a day? Open `/day/2025-05-31`, describe it in text, and the AI reconstructs the blocks of that past day with focus rules and TZ-aware times.
 
-**Proactive coaching push** -- кожну хвилину cron перевіряє блоки: якщо два "болото" підряд або два focus без перерви, AI генерує one-liner пінок з content-safety фільтром і надсилає Web Push на телефон. Atomic claim перед AI-викликом — race-safe проти duplicate cron firings.
+**Proactive coaching push** — every minute a cron checks your blocks: if there are two "swamp" moods in a row or two focus blocks with no break, the AI generates a one-liner nudge (with a content-safety filter) and sends a Web Push to your phone. Atomic claim before the AI call — race-safe against duplicate cron firings.
 
-**Word of the week** -- episodic-memory anchor: у п'ятницю AI шле push "яке слово цього тижня?". Зберігається один short phrase per (user, week), показується hero-текстом при перегляді минулих тижнів.
+**Word of the week** — an episodic-memory anchor: on Friday the AI pushes "what's the word for this week?". One short phrase is stored per (user, week) and shown as hero text when browsing past weeks.
 
-**Weekly digest** -- у неділю ввечері (на тих самих cron-рейках що й evening review) AI пише наративний підсумок тижня: що вийшло, патерни по днях, настрій. Застиглий snapshot-anchor per (user, week) -- на відміну від ефемерних insights, не регенериться, а лягає в довготривалу пам'ять коуча.
+**Weekly digest** — on Sunday evening (on the same cron rails as the evening review) the AI writes a narrative recap of the week: what got done, day-by-day patterns, mood. A frozen snapshot-anchor per (user, week) — unlike the ephemeral insights, it isn't regenerated; it settles into the coach's long-term memory.
 
-**Weekly reflection loop** -- під дайджестом лишаєш один інпут про свій стан за тиждень. AI відповідає порадами й інсайтами, спираючись на твій інпут плюс пам'ять усіх попередніх тижнів (їхні дайджести + твої нотатки + минулі поради). Інпут і відповідь зберігаються й годують наступні тижні -- коуч пам'ятає, як минали твої тижні й місяці, і зв'язує патерни в часі.
+**Weekly reflection loop** — under the digest you leave a single input about your state for the week. The AI responds with advice and insights, drawing on your input plus the memory of every previous week (their digests + your notes + past advice). Your input and the response are stored and feed future weeks — the coach remembers how your weeks and months went, and connects patterns over time.
 
-**Rest days** -- вибираєш у `/settings` які дні тижня — вихідні. У ці дні AI tone адаптується: не тисне на продуктивність, не нагнітає "де твої фокус-блоки?", вечірнє ревью фокусується на відновленні.
+**Rest days** — in `/settings` you pick which weekdays are days off. On those days the AI tone adapts: it doesn't push for productivity, doesn't nag "where are your focus blocks?", and the evening review centers on recovery.
 
-**Evening review** -- Vercel Cron о 19:00 UTC, AI пише summary дня + рекомендацію на завтра, шле push-нотифікацію з прев'ю.
+**Evening review** — a cron job runs in the user's evening window; the AI writes a summary of the day + a recommendation for tomorrow and sends a push notification with a preview.
 
-**Mood 1-tap** -- блоки без оцінки з'являються як картка, 3 кнопки (fire / ok / swamp). Mood feed-иться в AI prompts як `[энергия: ...]`.
+**Mood 1-tap** — unrated blocks surface as a card with three buttons (fire / ok / swamp). Mood is fed into AI prompts as `[energy: ...]`.
 
-**/week heatmap** -- 7 днів x 6 4-годинних слотів, домінантна категорія per cell з opacity = totalMinutes/240. Динамічні summary tiles (рендеряться лише категорії, наявні в розкладі -- без zero-noise), weekly digest + reflection зверху.
+**/week heatmap** — 7 days × 6 four-hour slots, the dominant category per cell with opacity = totalMinutes/240. Dynamic summary tiles (only categories present in the schedule are rendered — no zero-noise), with the weekly digest + reflection on top.
 
-**Anti-burnout rules** -- focus (coded/work_other) hard-cap 50 хвилин, мінімум 15 хвилин non-focus gap між focus-блоками. Enforced скрізь: manual create, drag, planner, reschedule.
+**Anti-burnout rules** — focus blocks (coded/work_other) are hard-capped at 50 minutes, with a minimum 15-minute non-focus gap between focus blocks. Enforced everywhere: manual create, drag, planner, reschedule.
 
-**PWA + Web Push** -- installable на homescreen, VAPID push нотифікації, service worker. Іконка "р" amber на dark.
+**PWA + Web Push** — installable to the home screen, VAPID push notifications, service worker. Amber "р" icon on dark.
 
-**Liquid-glass UI** -- V2 restyle: aurora-фон за кожним екраном, backdrop-blur glass-chrome на хедерах і навігації, glass-light на картках/інпутах/чипах. Mobile-first dark, safe-area-aware (notch + home indicator).
+**Liquid-glass UI** — a V2 restyle: an aurora background behind every screen, backdrop-blur glass-chrome on headers and navigation, glass-light on cards/inputs/chips. Mobile-first dark, safe-area aware (notch + home indicator).
 
 ---
 
-## AI-архітектура
+## AI architecture
 
 ### Master-prompt persona
 
-Всі 8 AI-точок ділять один голос коуча -- `lib/ai/master-prompt.ts`. Це не system prompt-шаблон, а авторська персона: lowercase, без формальностей, прямий зворотний зв'язок, "будь реален" замість corporate advice. Зміна тону (firm/gentle) в `/settings` впливає на інструкцію тону, але голос залишається тим самим.
+All 8 AI touchpoints share a single coach voice — `lib/ai/master-prompt.ts`. It's not a system-prompt template but an authored persona: lowercase, no formalities, direct feedback, "be real" instead of corporate advice. Changing the tone (firm/gentle) in `/settings` adjusts the tone instruction, but the voice stays the same.
 
-Кожен use-case (`lib/ai/prompts.ts`) компонує промпт як:
+Each use case (`lib/ai/prompts.ts`) composes the prompt as:
 
 ```
 COACH_VOICE (persona)
@@ -80,11 +80,11 @@ gemini-2.5-flash  ->  gemini-2.5-flash-lite  ->  gemini-2.0-flash
    primary              fallback on 503           last resort
 ```
 
-Три моделі по низхідній якості. Кожен AI-модуль (`insights.ts`, `reschedule.ts`, `coach-nudge.ts`, `review.ts`, `planner.ts`) ітерує ланцюжок, ловить помилки, логує у structured JSON. Якщо все три fail -- graceful null, UI показує fallback стан.
+Three models in descending quality. Each AI module (`insights.ts`, `reschedule.ts`, `coach-nudge.ts`, `review.ts`, `planner.ts`) iterates the chain, catches errors, logs structured JSON. If all three fail — a graceful null, and the UI shows a fallback state.
 
 ### Structured output
 
-AI SDK `generateObject` з zod-схемами для типобезпечного парсингу:
+AI SDK `generateObject` with zod schemas for type-safe parsing:
 
 | Touchpoint | Output schema | SDK method |
 |---|---|---|
@@ -94,10 +94,10 @@ AI SDK `generateObject` з zod-схемами для типобезпечног�
 | Adaptive reschedule | `{ blocks: [{ ref, start, end, drop }], note }` | `generateObject` |
 | Retro fill (past day) | same shape as planner | `generateObject` |
 | Proactive nudge | `{ line: z.string().max(140) }` + HARM_BLOCKLIST + canned fallback | `generateObject` |
-| Weekly digest | `{ summary }` -- наративний підсумок тижня | `generateObject` |
-| Weekly reflection advice | `{ advice }` -- на основі інпуту + памʼяті тижнів | `generateObject` |
+| Weekly digest | `{ summary }` — narrative recap of the week | `generateObject` |
+| Weekly reflection advice | `{ advice }` — from the input + memory of past weeks | `generateObject` |
 
-Fallback chain (`gemini-2.5-flash` → `flash-lite` → `2.0-flash`) and log shape (`level/msg/model/error`) extracted into single `runWithFallback<T>({ schema, prompt, logKey, logContext })` helper used by all eight touchpoints — one source of truth.
+The fallback chain (`gemini-2.5-flash` → `flash-lite` → `2.0-flash`) and the log shape (`level/msg/model/error`) are extracted into a single `runWithFallback<T>({ schema, prompt, logKey, logContext })` helper used by all eight touchpoints — one source of truth.
 
 ### Proactive coaching loop
 
@@ -120,39 +120,39 @@ cron-job.org (every 1 min)
                 -> Web Push (canned fallback if blocklist hit)
 ```
 
-Block-started / block-ending pushes use the same pattern: atomic claim on `time_blocks.notified_*_at` *before* sending so two overlapping cron invocations can't both fire the push. Loser of the race gets `[]` from the UPDATE and skips cleanly.
+Block-started / block-ending pushes use the same pattern: an atomic claim on `time_blocks.notified_*_at` *before* sending, so two overlapping cron invocations can't both fire the push. The loser of the race gets `[]` from the UPDATE and skips cleanly.
 
 ### Cron schedule (all external)
 
 | Route | Schedule | Why external |
 |---|---|---|
-| `/api/block-tick` | every 1 min | Vercel Hobby = daily cron only; need minute-level for block reminders |
-| `/api/morning-nudge` | every 1 hour at `:00` | Daily cron at fixed UTC time can only honor one timezone. Hourly + ±30min user-time window covers every IANA TZ the settings form exposes |
-| `/api/review` | every 1 hour at `:00` | Same: daily 19:00 UTC was unreachable for non-Europe users despite a configurable `evening_review_at` setting |
+| `/api/block-tick` | every 1 min | Vercel Hobby = daily cron only; minute-level is needed for block reminders |
+| `/api/morning-nudge` | every 1 hour at `:00` | A daily cron at a fixed UTC time can only honor one timezone. Hourly + a ±30-min user-time window covers every IANA TZ the settings form exposes |
+| `/api/review` | every 1 hour at `:00` | Same: a daily 19:00 UTC job was unreachable for non-Europe users despite a configurable `evening_review_at` setting |
 
-All three jobs are configured at [cron-job.org](https://cron-job.org) (free, external HTTP POST). Each is a regular function invocation — Vercel cron quota isn't touched. Idempotency:
+All three jobs are configured at [cron-job.org](https://cron-job.org) (free, external HTTP POST). Each is a regular function invocation — the Vercel cron quota isn't touched. Idempotency:
 
 - `block-tick` → atomic claim on `time_blocks.notified_*_at` and `profiles.last_proactive_at` (see "Proactive coaching loop" above)
-- `morning-nudge` → atomic claim on `profiles.last_morning_nudge_at` (per-day local)
-- `review` → uniqueness on `(user_id, for_date)` in `reviews` table. Той самий hourly tick несе ще два TZ-gated проходи: п'ятничний word-of-week nudge і недільний weekly digest (`week_summaries`, unique on `(user_id, week_start)`)
+- `morning-nudge` → atomic claim on `profiles.last_morning_nudge_at` (per local day)
+- `review` → uniqueness on `(user_id, for_date)` in the `reviews` table. The same hourly tick carries two more TZ-gated passes: the Friday word-of-week nudge and the Sunday weekly digest (`week_summaries`, unique on `(user_id, week_start)`)
 
-So even if cron-job.org retries on transient failure or two ticks land in the same minute, no user gets duplicate review/nudge/coach. Trade-off: dependency on external service, free tier suspends jobs on non-2xx responses.
+So even if cron-job.org retries on a transient failure or two ticks land in the same minute, no user gets a duplicate review/nudge/coach. Trade-off: a dependency on an external service, whose free tier suspends jobs on non-2xx responses.
 
 `vercel.json` no longer declares any crons.
 
 ### Cache strategy
 
-Insights cache в `adhd_tracker.insights_cache` з 2-годинним TTL. Cache key: `(user_id, scope, for_date)`. На stale → AI generation → upsert через `onConflict: "user_id,scope,for_date"` (race-safe). Cache явно invalidate-иться з усіх write-шляхів (block CRUD, mood, retro-fill, profile-update) — без цього юзер бачив би до 2h pre-write coaching попри revalidatePath.
+Insights are cached in `adhd_tracker.insights_cache` with a 2-hour TTL. Cache key: `(user_id, scope, for_date)`. On stale → AI generation → upsert via `onConflict: "user_id,scope,for_date"` (race-safe). The cache is explicitly invalidated from every write path (block CRUD, mood, retro-fill, profile update) — without that a user would see up to 2h of pre-write coaching despite `revalidatePath`.
 
 ### Longitudinal memory (weekly)
 
-Окремо від 2-годинного insights-кешу — довготривала пам'ять коуча по тижнях. Кожен тиждень = рядок у `adhd_tracker.week_summaries`:
+Separate from the 2-hour insights cache is the coach's long-term memory across weeks. Each week is a row in `adhd_tracker.week_summaries`:
 
-- **summary** — наративний дайджест, який AI пише сам у неділю (Sunday loop у `/api/review`, той самий TZ-window що й evening review).
-- **user_note** — мій інпут про стан за тиждень.
-- **advice** — поради, які AI генерує у відповідь на інпут.
+- **summary** — the narrative digest the AI writes itself on Sunday (the Sunday loop in `/api/review`, the same TZ window as the evening review).
+- **user_note** — my input about how the week went.
+- **advice** — the advice the AI generates in response to that input.
 
-Коли я лишаю тижневу рефлексію, `generateWeekAdvice` тягне до 8 попередніх тижнів (`getWeekSummariesForRange`) і складає їх — дайджести + мої нотатки + минулі поради — у промпт. Так коуч зв'язує патерни в часі ("те саме болото третій тиждень підряд"), а не реагує лише на сьогодні. Пам'ять наростає сама: кожна рефлексія стає контекстом для наступних. Без чату й стрімінгу — асинхронний тижневий цикл на наявних cron-рейках.
+When I leave a weekly reflection, `generateWeekAdvice` pulls up to 8 previous weeks (`getWeekSummariesForRange`) and folds them — digests + my notes + past advice — into the prompt. That lets the coach connect patterns over time ("the same swamp for the third week running") instead of reacting only to today. The memory grows on its own: each reflection becomes context for the next. No chat, no streaming — an asynchronous weekly cycle on the existing cron rails.
 
 ---
 
@@ -170,17 +170,17 @@ Insights cache в `adhd_tracker.insights_cache` з 2-годинним TTL. Cache
 | Cron | cron-job.org (all external): 1-min block-tick, hourly morning-nudge + review/digest |
 | Language | TypeScript, pnpm |
 
-### Чому не...
+### Why not...
 
-**...AI Gateway?** Direct Gemini = менше latency, free tier 60 RPM / 1500 req/day вистачає для self-use. Gateway додає hop. Swap на Gateway -- одна зміна в import.
+**...AI Gateway?** Direct Gemini = lower latency, and the free tier (60 RPM / 1500 req/day) is plenty for self-use. The Gateway adds a hop. Swapping to it is a one-line import change.
 
-**...react-big-calendar / FullCalendar?** Бібліотеки -- overkill для single-day vertical timeline. Custom component з pointer events дає повний контроль над touch UX (ADHD-critical: мінімум кроків для дії).
+**...react-big-calendar / FullCalendar?** Those libraries are overkill for a single-day vertical timeline. A custom component with pointer events gives full control over the touch UX (ADHD-critical: the fewest steps to an action).
 
-**...Tremor для heatmap?** Спробували -- data shape не підходить для category-dominant heatmap. Custom component, 50 рядків.
+**...Tremor for the heatmap?** Tried it — the data shape didn't fit a category-dominant heatmap. Custom component, 50 lines.
 
 ---
 
-## Структура проєкту
+## Project structure
 
 ```
 app/
@@ -188,10 +188,10 @@ app/
   week/            -- weekly heatmap + summary tiles + digest + reflection loop
   settings/        -- profile, work hours, AI tone, push toggle
   api/
-    review/        -- Vercel Cron, evening review for all users
-    morning-nudge/ -- Vercel Cron, morning push (per-day atomic claim)
+    review/        -- external cron, evening review + Friday word + Sunday digest
+    morning-nudge/ -- external cron, morning push (per-day atomic claim)
     block-tick/    -- external cron, minute-level reminders + coaching
-  day/[date]/      -- past-day archive + retro-fill (AI reconstructs missed day)
+  day/[date]/      -- past-day archive + retro-fill (AI reconstructs a missed day)
 
 lib/
   ai/
@@ -228,46 +228,46 @@ lib/
 
 ## Data model
 
-7 таблиць у schema `adhd_tracker`:
+7 tables in the `adhd_tracker` schema:
 
-- **profiles** -- timezone, work_hours, ai_tone (firm/gentle), evening_review config, `rest_days int[]` (weekday indices treated as days off), `last_proactive_at` + `last_morning_nudge_at` (per-day atomic-claim idempotency).
-- **time_blocks** -- user_id, start_at, end_at, category, label, mood (fire/ok/swamp), notify flags. Exclusion constraint через `btree_gist` для overlap protection.
-- **insights_cache** -- per-user per-scope per-date, 2h TTL. Has SELECT / INSERT / UPDATE / DELETE policies so user-session client can upsert + invalidate.
-- **reviews** -- evening review summary + recommendation, user_response (ok/skip/not_today)
-- **week_words** -- one short phrase per (user, week_start) — episodic-memory anchor displayed when browsing past weeks.
-- **week_summaries** -- per (user, week_start): AI `summary` (недільний дайджест) + `user_note` (моя тижнева рефлексія) + `advice` (поради коуча). Довготривала пам'ять для weekly reflection-циклу.
-- **push_subscriptions** -- Web Push endpoints, unique on endpoint, auto-cleaned on 404/410.
+- **profiles** — timezone, work_hours, ai_tone (firm/gentle), evening_review config, `rest_days int[]` (weekday indices treated as days off), `last_proactive_at` + `last_morning_nudge_at` (per-day atomic-claim idempotency).
+- **time_blocks** — user_id, start_at, end_at, category, label, mood (fire/ok/swamp), notify flags. Exclusion constraint via `btree_gist` for overlap protection.
+- **insights_cache** — per-user per-scope per-date, 2h TTL. Has SELECT / INSERT / UPDATE / DELETE policies so the user-session client can upsert + invalidate.
+- **reviews** — evening review summary + recommendation, user_response (ok/skip/not_today).
+- **week_words** — one short phrase per (user, week_start); an episodic-memory anchor shown when browsing past weeks.
+- **week_summaries** — per (user, week_start): AI `summary` (Sunday digest) + `user_note` (my weekly reflection) + `advice` (coach advice). Long-term memory for the weekly reflection loop.
+- **push_subscriptions** — Web Push endpoints, unique on endpoint, auto-cleaned on 404/410.
 
-RLS на всіх таблицях: `auth.uid() = user_id`. Service-role client для cron routes. `handle_new_user()` trigger має EXECUTE revoked from PUBLIC (тільки auth trigger).
-
----
-
-## Design decisions для ADHD
-
-**1px = 1 хвилина.** Фізичний розмір блока = тривалість. Time-blind мозок "бачить" час через простір.
-
-**Tap-to-create, не форма.** Тапнув на порожній слот -> одразу sheet з категорією. Мінімум кроків до дії.
-
-**Focus cap 50 хвилин.** Не Pomodoro (25 -- занадто мало для deep work з ADHD). 50 хвилин -- compromise між hyperfocus trap і продуктивністю. Enforced скрізь, не optional.
-
-**"План зламався" замість "видали все і почни заново".** Reschedule зберігає id/mood/label кожного блока, AI тільки перерозподіляє час. Нічого не втрачається.
-
-**Mood -- 3 опції, не шкала.** Fire / ok / swamp. Для ADHD шкала 1-10 = decision paralysis. Три кнопки = 0.5 сек.
-
-**Coach, не assistant.** AI не питає "чим можу допомогти?". Він дивиться на дані і каже що бачить. Proactive, не reactive.
-
-**Зовнішня пам'ять по тижнях.** ADHD = слабка автобіографічна пам'ять на патерни ("чи завжди середа провальна?", "коли востаннє був рівний тиждень?"). Тижневі дайджести + рефлексії стають зовнішньою памʼяттю, яку коуч читає за тебе і зв'язує в часі -- замість того щоб ти тримав це в голові.
+RLS on every table: `auth.uid() = user_id`. A service-role client is used for cron routes. The `handle_new_user()` trigger has EXECUTE revoked from PUBLIC (auth trigger only).
 
 ---
 
-## Розгортання локально
+## ADHD design decisions
+
+**1px = 1 minute.** A block's physical size equals its duration. A time-blind brain "sees" time through space.
+
+**Tap-to-create, not a form.** Tap an empty slot → a category sheet opens immediately. The fewest steps to an action.
+
+**Focus cap of 50 minutes.** Not Pomodoro (25 is too short for ADHD deep work). 50 minutes is a compromise between the hyperfocus trap and productivity. Enforced everywhere, not optional.
+
+**"The plan broke" instead of "delete everything and start over."** Reschedule keeps each block's id/mood/label; the AI only redistributes the time. Nothing is lost.
+
+**Mood — 3 options, not a scale.** Fire / ok / swamp. A 1–10 scale is decision paralysis for ADHD. Three buttons = half a second.
+
+**Coach, not assistant.** The AI doesn't ask "how can I help?". It looks at the data and says what it sees. Proactive, not reactive.
+
+**External memory across weeks.** ADHD means weak autobiographical memory for patterns ("is Wednesday always a bust?", "when was the last steady week?"). Weekly digests + reflections become an external memory the coach reads for you and connects over time — instead of you holding it in your head.
+
+---
+
+## Local setup
 
 ```bash
 git clone https://github.com/Noritur/adhd-tracker.git
 cd adhd-tracker
 pnpm install
 
-# .env.local (see .env.example for full list)
+# .env.local (see .env.example for the full list)
 # NEXT_PUBLIC_SUPABASE_URL=...
 # NEXT_PUBLIC_SUPABASE_ANON_KEY=...
 # SUPABASE_SERVICE_ROLE_KEY=...
@@ -280,46 +280,46 @@ pnpm install
 pnpm dev
 ```
 
-Supabase: потрібен проєкт з exposed schema `adhd_tracker`, custom SMTP для magic link (Supabase default = 4 emails/hour). Schema, RLS policies, grants, trigger та btree_gist exclusion constraint версіонуються у `supabase/migrations/` — `supabase db push` після `supabase link` накатує все на чистий проєкт.
+Supabase: you need a project with the `adhd_tracker` schema exposed and custom SMTP for magic links (Supabase's default is 4 emails/hour). The schema, RLS policies, grants, trigger, and the btree_gist exclusion constraint are versioned in `supabase/migrations/` — `supabase db push` after `supabase link` applies everything to a clean project.
 
 ---
 
-## Свідомі trade-offs
+## Deliberate trade-offs
 
-| Що | Чому | Альтернатива |
+| What | Why | Alternative |
 |---|---|---|
-| Direct Gemini, not Gateway | Free tier, менше latency, швидше ship | AI Gateway (one import change) |
-| cron-job.org для block-tick | Vercel Hobby = daily cron only. Потрібна хвилинна гранулярність | Vercel Pro ($20/mo) або self-hosted cron |
-| Custom SMTP (Resend) | Supabase default SMTP = 4 emails/hour project-wide | Supabase Pro plan |
-| Mobile-only dark UI | 80% використання з телефону, ADHD = менше вибору = менше friction | Responsive + light theme |
-| Coach voice hardcoded (RU) | Self-dogfooding product, один користувач | i18n, per-user voice config |
+| Direct Gemini, not Gateway | Free tier, lower latency, faster to ship | AI Gateway (one import change) |
+| cron-job.org for block-tick | Vercel Hobby = daily cron only; minute-level granularity is needed | Vercel Pro ($20/mo) or self-hosted cron |
+| Custom SMTP (Resend) | Supabase's default SMTP = 4 emails/hour project-wide | Supabase Pro plan |
+| Mobile-only dark UI | 80% of use is from the phone; ADHD = fewer choices = less friction | Responsive + light theme |
+| Coach voice hardcoded (RU) | A self-dogfooded product, single user | i18n, per-user voice config |
 
 ---
 
 ## Roadmap
 
-- [ ] Telegram bot як notification channel (reuse python-telegram-bot з попереднього проєкту)
-- [ ] ActivityWatch integration для автоматичного логування screen time
-- [ ] GCal import (блоки з календаря як read-only overlay)
-- [ ] Demo account з seed data (recruiter заходить -> не порожньо)
+- [ ] Telegram bot as a notification channel (reuse python-telegram-bot from a previous project)
+- [ ] ActivityWatch integration for automatic screen-time logging
+- [ ] GCal import (calendar blocks as a read-only overlay)
+- [ ] Demo account with seed data (a recruiter arrives → not an empty screen)
 - [ ] Light theme + responsive desktop layout
-- [ ] Voice logging через Whisper
+- [ ] Voice logging via Whisper
 
 ---
 
 ## Stats
 
-- ~12 днів розробки + 2 тижні self-dogfood тест-фази (bug-log T1-T19, ~16 фіксів/фіч у проді)
+- ~12 days of development + 2 weeks of self-dogfooded testing (bug-log T1–T19, ~16 fixes/features shipped)
 - 8 AI touchpoints (planner, reschedule, insights, review, retro-fill, coach-nudge, weekly digest, weekly reflection advice), 3-model Gemini fallback chain
 - `runWithFallback` + `applyPlanBlocks` helpers — 5 files share one chain implementation, 2 actions share one insert implementation
 - Anti-burnout focus rules (50min cap + 15min gap) enforced via `validateFocusBlock` across manual edit / drag-resize / planner / reschedule / retro-fill
 - Atomic push idempotency (claim-before-send for block start/end + coach + morning nudge)
-- TZ-aware everywhere: prompts, timeline, NowLine, week buckets — all honor `profiles.timezone`, not server clock
-- Insights cache bust on every write path (no 2h stale-coaching window after mood/block/profile changes)
+- TZ-aware everywhere: prompts, timeline, NowLine, week buckets — all honor `profiles.timezone`, not the server clock
+- Insights cache busted on every write path (no 2h stale-coaching window after mood/block/profile changes)
 - Longitudinal weekly memory: digests + reflections accumulate per week, fed into future coach advice (`getWeekSummariesForRange`)
 - Liquid-glass V2 design system (aurora + backdrop-blur chrome + glass-light surfaces), safe-area-aware PWA
-- 22 задокументованих blockers (Next.js 16, Supabase custom schema + RLS/grants, PWA auth, TZ math, npm bugs)
-- Повністю self-dogfooded: проєкт будувався для власного ADHD-патерну
+- 22 documented blockers (Next.js 16, Supabase custom schema + RLS/grants, PWA auth, TZ math, npm bugs)
+- Fully self-dogfooded: built for the author's own ADHD pattern
 
 ---
 
