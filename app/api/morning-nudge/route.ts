@@ -8,6 +8,7 @@ import {
 import { timeStringToMin } from "@/lib/time/slots";
 import { sendToUser } from "@/lib/push/send";
 import { isRestWeekday, type Profile } from "@/lib/db/profile";
+import { claimDailySlot } from "@/lib/db/claims";
 import { requireCronAuth } from "@/lib/auth/cron";
 
 export const dynamic = "force-dynamic";
@@ -80,18 +81,17 @@ async function handler(request: Request): Promise<Response> {
     // Atomic per-local-day claim. Filter: last_morning_nudge_at must be
     // null OR older than today's local-day start. If we lose the race
     // (cron retried mid-flight, two ticks landed in the same minute),
-    // claimed.length === 0 and we skip cleanly.
+    // the claim comes back false and we skip cleanly.
     const { start: dayStart } = localDayBoundsUTC(now, tz);
     const dayStartISO = dayStart.toISOString();
-    const { data: claimed } = await admin
-      .from("profiles")
-      .update({ last_morning_nudge_at: nowISO })
-      .eq("id", p.id)
-      .or(
-        `last_morning_nudge_at.is.null,last_morning_nudge_at.lt.${dayStartISO}`,
-      )
-      .select("id");
-    if (!claimed || claimed.length === 0) {
+    const claimed = await claimDailySlot(
+      admin,
+      p.id,
+      "last_morning_nudge_at",
+      nowISO,
+      dayStartISO,
+    );
+    if (!claimed) {
       stats.skipped_already++;
       continue;
     }
