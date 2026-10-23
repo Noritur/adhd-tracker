@@ -5,6 +5,7 @@ import type { TestProject } from "vitest/node";
 const DB_NAME = "adhd_test";
 const MIGRATIONS = new URL("../../supabase/migrations/", import.meta.url);
 const BOOTSTRAP = new URL("./bootstrap.sql", import.meta.url);
+const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]", "::1"]);
 
 declare module "vitest" {
   export interface ProvidedContext {
@@ -29,6 +30,15 @@ export default async function setup(project: TestProject) {
     }
     project.provide("dbUrl", null);
     return;
+  }
+
+  // The setup drops and recreates a database, so it only runs against a
+  // server on this machine (CI's service container is on localhost too).
+  const host = new URL(adminUrl).hostname;
+  if (!LOCAL_HOSTS.has(host)) {
+    const message = `refusing to recreate ${DB_NAME} on ${host}: TEST_DATABASE_URL must point at localhost`;
+    console.error(message);
+    throw new Error(message);
   }
 
   const admin = new Client({ connectionString: adminUrl });

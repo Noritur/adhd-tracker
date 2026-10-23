@@ -4,6 +4,8 @@
  * only one gets the row back. These tests check the database half of that
  * contract with the same SQL shape the supabase-js calls produce
  * (`.update().eq().is(..., null).select("id")` and the `.or(...)` variant).
+ * tests/unit/claims.test.ts checks that lib/db/claims.ts, which the routes
+ * call, builds exactly that shape.
  */
 import type { Pool } from "pg";
 import { describe, expect, it } from "vitest";

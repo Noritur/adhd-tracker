@@ -50,10 +50,17 @@ describe("requireCronAuth with a secret", () => {
     }
   });
 
-  it("never writes the secret to the log", () => {
-    vi.stubEnv("CRON_SECRET", "");
-    requireCronAuth(requestWith(`Bearer ${SECRET}`));
-    const logged = errorLog.mock.calls.flat().join(" ");
-    expect(logged).not.toContain(SECRET);
+  it("logs neither the secret nor the presented token on a rejected request", () => {
+    const logs = [
+      errorLog,
+      vi.spyOn(console, "log").mockImplementation(() => {}),
+      vi.spyOn(console, "warn").mockImplementation(() => {}),
+    ];
+    const guess = "Bearer guessed-token-abcdef";
+    requireCronAuth(requestWith(guess));
+    requireCronAuth(requestWith(`Bearer ${SECRET.slice(0, -1)}`));
+    const logged = logs.flatMap((spy) => spy.mock.calls.flat()).map(String).join(" ");
+    expect(logged).not.toContain(SECRET.slice(0, -1));
+    expect(logged).not.toContain("guessed-token-abcdef");
   });
 });

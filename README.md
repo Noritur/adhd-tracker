@@ -296,6 +296,7 @@ pnpm test:db     # replays supabase/migrations into a scratch database and runs 
 
 - **Unit:** timezone math (DST days in Madrid, negative offsets, week bounds), the drag cascade, free-slot search for the planner, the 50-minute focus cap, cron auth failing closed on a missing secret, the Gemini fallback chain (mocked, no network), proactive-nudge detection.
 - **Database:** every file in `supabase/migrations/` is replayed on plain Postgres with a small stand-in for Supabase's roles and `auth.uid()`. The tests cover the no-overlap exclusion constraint (including two concurrent inserts), RLS on every table (own rows only, no writes on behalf of other users, no access for `anon`, no takeover of another user's push endpoint), the trigger function not being callable by API roles, and claim-before-send leaving exactly one winner when two cron runs overlap.
+- **Replay vs. production:** `tests/db/schema-fingerprint.sql` hashes policies, grants, RLS flags, constraints, columns and function privileges. Run read-only on the replayed database and on the live project, it gives equal hashes, so the migrations in git describe what is deployed.
 - **Known bugs** stay in the suite as `it.fails` tests named after the bug (for example T22, an hour's error in `localDateTimeToUTC` around DST switches), so the suite is green today and the test flips the day the bug is fixed.
 
 CI runs lint, the type check and both test layers on every push.

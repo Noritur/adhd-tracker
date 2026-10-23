@@ -15,7 +15,7 @@ type Role = "anon" | "authenticated" | "service_role";
 
 /**
  * Runs `fn` in one transaction as `role`, the way PostgREST runs a request:
- * `set local role` plus the JWT subject that auth.uid() reads. Commits on
+ * `set local role` plus the JWT claims that auth.uid() reads. Commits on
  * success, rolls back and rethrows on error.
  */
 export async function as<T>(
@@ -28,7 +28,8 @@ export async function as<T>(
   try {
     await client.query("begin");
     await client.query(`set local role ${role}`);
-    await client.query("select set_config('request.jwt.claim.sub', $1, true)", [userId ?? ""]);
+    const claims = userId ? JSON.stringify({ sub: userId, role }) : "";
+    await client.query("select set_config('request.jwt.claims', $1, true)", [claims]);
     const result = await fn(client);
     await client.query("commit");
     return result;

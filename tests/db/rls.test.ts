@@ -112,6 +112,14 @@ describe.skipIf(!dbUrl)("row-level security", () => {
       expect(result).toEqual({ visible: [a], own: 1, other: 0 });
     });
 
+    it("cannot be created for someone else", async () => {
+      const a = await createUser(pool);
+      const b = await createUser(pool);
+      await expect(
+        asUser(pool, a, (c) => c.query("insert into adhd_tracker.profiles (id) values ($1)", [b])),
+      ).rejects.toMatchObject({ code: PG.insufficientPrivilege });
+    });
+
     it("cannot be created by calling the trigger function directly", async () => {
       const { rows } = await pool.query(
         `select r.rolname, has_function_privilege(r.rolname, 'adhd_tracker.handle_new_user()', 'execute') as can
@@ -195,6 +203,22 @@ describe.skipIf(!dbUrl)("row-level security", () => {
       });
       expect(answered).toBe(0);
     });
+
+    it("can be answered by their owner", async () => {
+      const a = await createUser(pool);
+      await pool.query(
+        "insert into adhd_tracker.reviews (user_id, for_date, summary) values ($1, '2026-01-15', 's')",
+        [a],
+      );
+      const answered = await asUser(pool, a, async (c) => {
+        const r = await c.query(
+          "update adhd_tracker.reviews set user_response = 'skip' where user_id = $1",
+          [a],
+        );
+        return r.rowCount;
+      });
+      expect(answered).toBe(1);
+    });
   });
 
   describe("tables with a single `for all` policy", () => {
@@ -212,6 +236,22 @@ describe.skipIf(!dbUrl)("row-level security", () => {
           code: PG.insufficientPrivilege,
         });
         await expect(asUser(pool, a, (c) => c.query(insert, [a]))).resolves.toBeDefined();
+      });
+
+      it(`${table}: hides, and refuses to change or delete, another user's row`, async () => {
+        const a = await createUser(pool);
+        const b = await createUser(pool);
+        await pool.query(insert, [b]);
+        const result = await asUser(pool, a, async (c) => {
+          const seen = await c.query(`select id from adhd_tracker.${table}`);
+          const moved = await c.query(
+            `update adhd_tracker.${table} set week_start = '2026-01-19' where user_id = $1`,
+            [b],
+          );
+          const deleted = await c.query(`delete from adhd_tracker.${table} where user_id = $1`, [b]);
+          return [seen.rowCount, moved.rowCount, deleted.rowCount];
+        });
+        expect(result).toEqual([0, 0, 0]);
       });
     }
   });

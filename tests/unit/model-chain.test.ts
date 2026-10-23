@@ -44,6 +44,21 @@ describe("runWithFallback", () => {
     expect(modelsTried()).toEqual([...MODEL_CHAIN]);
   });
 
+  it("keeps the prompt, which holds the user's own blocks, out of the logs", async () => {
+    const prompt = "blocks today: therapy 10:00, call with mum 12:00";
+    generateObject
+      .mockRejectedValueOnce(new Error("429 quota"))
+      .mockResolvedValueOnce({ object: { line: "ok" } });
+    await runWithFallback({ ...opts, prompt, logContext: { blocks: 2 } });
+    const logged = [console.log, console.error]
+      .flatMap((fn) => vi.mocked(fn).mock.calls.flat())
+      .map(String)
+      .join("\n");
+    expect(logged).toContain("ai.test.model_failed");
+    expect(logged).not.toContain("therapy");
+    expect(logged).not.toContain("mum");
+  });
+
   it("passes the schema and prompt through unchanged", async () => {
     generateObject.mockResolvedValueOnce({ object: { line: "ok" } });
     await runWithFallback(opts);

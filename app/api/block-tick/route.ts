@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireCronAuth } from "@/lib/auth/cron";
 import { getBlocksForTick } from "@/lib/db/blocks";
+import { claimBlockNotification, claimDailySlot } from "@/lib/db/claims";
 import { getSubscriptionsForUser } from "@/lib/db/push-subscriptions";
 import { sendToSubscription } from "@/lib/push/send";
 import { CATEGORIES_BY_VALUE } from "@/lib/categories";
@@ -72,13 +73,9 @@ async function handler(request: Request): Promise<Response> {
         msSinceStart >= 0 &&
         msSinceStart <= STARTED_WINDOW_MS
       ) {
-        const { data: claimed } = await admin
-          .from("time_blocks")
-          .update({ notified_started_at: nowISO })
-          .eq("id", b.id)
-          .is("notified_started_at", null)
-          .select("id");
-        if (claimed && claimed.length > 0) {
+        if (
+          await claimBlockNotification(admin, b.id, "notified_started_at", nowISO)
+        ) {
           await Promise.all(
             subs.map((s) =>
               sendToSubscription(s, {
@@ -100,13 +97,9 @@ async function handler(request: Request): Promise<Response> {
         msToEnd <= ENDING_WINDOW_MS
       ) {
         const minsLeft = Math.max(1, Math.round(msToEnd / 60_000));
-        const { data: claimed } = await admin
-          .from("time_blocks")
-          .update({ notified_ending_at: nowISO })
-          .eq("id", b.id)
-          .is("notified_ending_at", null)
-          .select("id");
-        if (claimed && claimed.length > 0) {
+        if (
+          await claimBlockNotification(admin, b.id, "notified_ending_at", nowISO)
+        ) {
           await Promise.all(
             subs.map((s) =>
               sendToSubscription(s, {
@@ -136,15 +129,9 @@ async function handler(request: Request): Promise<Response> {
         // older than today's local-day start.
         const { start: dayStart } = localDayBoundsUTC(new Date(now), p.timezone);
         const dayStartISO = dayStart.toISOString();
-        const { data: claimed } = await admin
-          .from("profiles")
-          .update({ last_proactive_at: nowISO })
-          .eq("id", p.id)
-          .or(
-            `last_proactive_at.is.null,last_proactive_at.lt.${dayStartISO}`,
-          )
-          .select("id");
-        if (claimed && claimed.length > 0) {
+        if (
+          await claimDailySlot(admin, p.id, "last_proactive_at", nowISO, dayStartISO)
+        ) {
           const line = await generateCoachNudge(kind, p);
           if (line) {
             await Promise.all(
