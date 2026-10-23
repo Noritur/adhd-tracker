@@ -1,5 +1,7 @@
 # adhd-tracker
 
+[![ci](https://github.com/Noritur/adhd-tracker/actions/workflows/ci.yml/badge.svg)](https://github.com/Noritur/adhd-tracker/actions/workflows/ci.yml)
+
 An AI coach for people with an ADHD pattern — one that lives inside the timeline of your day.
 
 **Production:** https://adhd-tracker-nine.vercel.app
@@ -281,6 +283,22 @@ pnpm dev
 ```
 
 Supabase: you need a project with the `adhd_tracker` schema exposed and custom SMTP for magic links (Supabase's default is 4 emails/hour). The schema, RLS policies, grants, trigger, and the btree_gist exclusion constraint are versioned in `supabase/migrations/` — `supabase db push` after `supabase link` applies everything to a clean project.
+
+---
+
+## Testing
+
+```bash
+pnpm test        # unit tests; database tests are skipped when no database is set
+pnpm db:test:up  # Postgres 17 in Docker on 127.0.0.1:5436
+pnpm test:db     # replays supabase/migrations into a scratch database and runs the database tests
+```
+
+- **Unit:** timezone math (DST days in Madrid, negative offsets, week bounds), the drag cascade, free-slot search for the planner, the 50-minute focus cap, cron auth failing closed on a missing secret, the Gemini fallback chain (mocked, no network), proactive-nudge detection.
+- **Database:** every file in `supabase/migrations/` is replayed on plain Postgres with a small stand-in for Supabase's roles and `auth.uid()`. The tests cover the no-overlap exclusion constraint (including two concurrent inserts), RLS on every table (own rows only, no writes on behalf of other users, no access for `anon`, no takeover of another user's push endpoint), the trigger function not being callable by API roles, and claim-before-send leaving exactly one winner when two cron runs overlap.
+- **Known bugs** stay in the suite as `it.fails` tests named after the bug (for example T22, an hour's error in `localDateTimeToUTC` around DST switches), so the suite is green today and the test flips the day the bug is fixed.
+
+CI runs lint, the type check and both test layers on every push.
 
 ---
 
