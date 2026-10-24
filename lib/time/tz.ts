@@ -63,37 +63,89 @@ export function getHHMMInTZ(at: Date, tz: string): string {
   return `${h}:${map.minute}`;
 }
 
-/** UTC instant of local-midnight in `tz` for the local day containing `localDate`. */
-export function localMidnightUTC(localDate: Date, tz: string): Date {
-  const ymd = getYMDInTZ(localDate, tz);
-  const [y, m, d] = ymd.split("-").map(Number);
-  const naiveUTC = Date.UTC(y, m - 1, d, 0, 0, 0);
-  const offsetMin = getTZOffsetMinutes(new Date(naiveUTC), tz);
-  return new Date(naiveUTC - offsetMin * 60_000);
+const DAY_MS = 86_400_000;
+
+/**
+ * UTC instant of the wall-clock time y-m-d hh:mm in `tz`. Day and hour may
+ * overflow (d + 1 past month end, 24:00): Date.UTC rolls them over.
+ *
+ * The offset can change during the day, so the offsets a day before and a
+ * day after are both tried, and the one that reads back as the same wall
+ * time wins. Taking the offset at the wall time read as UTC is an hour off
+ * near a switch (T22). Two wall times have no single answer. One that
+ * happens twice on fall-back is taken the first time. One skipped by
+ * spring-forward lands on the first instant after the gap (02:30 → 03:00):
+ * shifting it by the gap instead (JS Date's rule, 02:30 → 03:30) would put
+ * 02:45 after 03:00, and a block across the gap would end before it starts.
+ */
+function wallTimeToUTC(
+  y: number,
+  m: number,
+  d: number,
+  hh: number,
+  mm: number,
+  tz: string,
+): Date {
+  const wall = Date.UTC(y, m - 1, d, hh, mm, 0);
+  const before = getTZOffsetMinutes(new Date(wall - DAY_MS), tz);
+  const after = getTZOffsetMinutes(new Date(wall + DAY_MS), tz);
+  const early = wall - before * 60_000;
+  if (getTZOffsetMinutes(new Date(early), tz) === before) return new Date(early);
+  const late = wall - after * 60_000;
+  if (getTZOffsetMinutes(new Date(late), tz) === after) return new Date(late);
+  // Skipped wall time: the switch lies in (late, early]. Find its minute.
+  let lo = late; // still on `before`
+  let hi = early; // already on `after`
+  while (hi - lo > 60_000) {
+    const mid = lo + Math.floor((hi - lo) / 120_000) * 60_000;
+    if (getTZOffsetMinutes(new Date(mid), tz) === after) hi = mid;
+    else lo = mid;
+  }
+  return new Date(hi);
 }
 
-/** UTC bounds of the local day containing `localDate` in `tz`. */
+/** Local Y-M-D of instant `at` in `tz`, as numbers. */
+function ymdPartsInTZ(at: Date, tz: string): [number, number, number] {
+  const [y, m, d] = getYMDInTZ(at, tz).split("-").map(Number);
+  return [y, m, d];
+}
+
+/** UTC instant of local-midnight in `tz` for the local day containing `localDate`. */
+export function localMidnightUTC(localDate: Date, tz: string): Date {
+  const [y, m, d] = ymdPartsInTZ(localDate, tz);
+  return wallTimeToUTC(y, m, d, 0, 0, tz);
+}
+
+/**
+ * UTC bounds of the local day containing `localDate` in `tz`.
+ *
+ * The next day is counted on the calendar (d + 1), not as a UTC-midnight
+ * Date: in a UTC-negative zone UTC midnight is still the previous local
+ * day, which made the day zero hours long (T24).
+ */
 export function localDayBoundsUTC(
   localDate: Date,
   tz: string,
 ): { start: Date; end: Date } {
-  const start = localMidnightUTC(localDate, tz);
-  const ymd = getYMDInTZ(localDate, tz);
-  const [y, m, d] = ymd.split("-").map(Number);
-  const nextDay = new Date(Date.UTC(y, m - 1, d + 1));
-  const end = localMidnightUTC(nextDay, tz);
-  return { start, end };
+  const [y, m, d] = ymdPartsInTZ(localDate, tz);
+  return {
+    start: wallTimeToUTC(y, m, d, 0, 0, tz),
+    end: wallTimeToUTC(y, m, d + 1, 0, 0, tz),
+  };
+}
+
+/** Local Y-M-D of the Monday starting the local week of `localDate`. */
+function mondayPartsInTZ(localDate: Date, tz: string): [number, number, number] {
+  const [y, m, d] = ymdPartsInTZ(localDate, tz);
+  const weekday = new Date(Date.UTC(y, m - 1, d)).getUTCDay(); // 0=Sun..6=Sat
+  const mondayOffset = weekday === 0 ? -6 : 1 - weekday;
+  return [y, m, d + mondayOffset];
 }
 
 /** UTC instant of Monday-00:00 in `tz` for the local week containing `localDate`. */
 export function localMondayMidnightUTC(localDate: Date, tz: string): Date {
-  const ymd = getYMDInTZ(localDate, tz);
-  const [y, m, d] = ymd.split("-").map(Number);
-  const probe = new Date(Date.UTC(y, m - 1, d));
-  const weekday = probe.getUTCDay(); // 0=Sun..6=Sat
-  const mondayOffset = weekday === 0 ? -6 : 1 - weekday;
-  const mondayDay = new Date(Date.UTC(y, m - 1, d + mondayOffset));
-  return localMidnightUTC(mondayDay, tz);
+  const [y, m, d] = mondayPartsInTZ(localDate, tz);
+  return wallTimeToUTC(y, m, d, 0, 0, tz);
 }
 
 /** UTC bounds of the Mon→next-Mon local week containing `localDate` in `tz`. */
@@ -101,12 +153,11 @@ export function localWeekBoundsUTC(
   localDate: Date,
   tz: string,
 ): { start: Date; end: Date } {
-  const start = localMondayMidnightUTC(localDate, tz);
-  const ymd = getYMDInTZ(start, tz);
-  const [y, m, d] = ymd.split("-").map(Number);
-  const nextMonday = new Date(Date.UTC(y, m - 1, d + 7));
-  const end = localMidnightUTC(nextMonday, tz);
-  return { start, end };
+  const [y, m, d] = mondayPartsInTZ(localDate, tz);
+  return {
+    start: wallTimeToUTC(y, m, d, 0, 0, tz),
+    end: wallTimeToUTC(y, m, d + 7, 0, 0, tz),
+  };
 }
 
 /** 0=Sun..6=Sat for the local day of `at` in `tz`. */
@@ -127,9 +178,7 @@ export function localDateTimeToUTC(
 ): Date {
   const [y, m, d] = ymd.split("-").map(Number);
   const [hh, mm] = hhmm.split(":").map(Number);
-  const naiveUTC = Date.UTC(y, m - 1, d, hh, mm, 0);
-  const offsetMin = getTZOffsetMinutes(new Date(naiveUTC), tz);
-  return new Date(naiveUTC - offsetMin * 60_000);
+  return wallTimeToUTC(y, m, d, hh, mm, tz);
 }
 
 /**
